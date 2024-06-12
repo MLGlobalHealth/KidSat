@@ -4,6 +4,37 @@
 
 This is a repository for code of NeurIPS benchmark and dataset submission 2024.
 
+
+## Getting All DHS Data
+
+To access DHS data, please follow these steps:
+
+1. **Register for DHS Access:**
+   - Visit the registration page [here](https://dhsprogram.com/data/new-user-registration.cfm) and apply for access to the DHS data.
+
+
+2. **Obtain the Data for Following Countries and Years**
+    For the following country and years, select ALL STATA and Geographic Data.
+    | Country      | Year(s) |
+    |--------------|---------|
+    | Zambia       | 2007, 2013, 2018|
+    | Malawi       | 2000, 2004, 2010, 2015|
+    | Uganda       | 2000, 2006, 2011, 2016|
+    | Comoros      | 2012|
+    | Tanzania     | 1999, 2010, 2015, 2022|
+    | Kenya        | 2003, 2008, 2014, 2022|
+    | Angola       | 2015    |
+    | Ethiopia     | 2000, 2005, 2011, 2016, 2019|
+    | Rwanda       | 2005, 2007, 2010, 2014, 2019|
+    | Lesotho      | 2004, 2009, 2014    |
+    | Madagascar   | 1997, 2008, 2021|
+    | Zimbabwe     | 1999, 2005, 2010, 2015|
+    | Burundi      | 2010, 2016    |
+    | Mozambique   | 2011    |
+    | Eswatini     | 2006    |
+    | South Africa | 2016    |
+
+    The folders should be unzipped and store in `survey_processing/dhs_data/` (e.g. `survey_processing/dhs_data/` should contain subfolders of "ET_20XX_DHS_XXX..." etc. ).
 ---
 
 ## Usage for Imagery Scraping
@@ -27,11 +58,11 @@ Before you start, make sure you have registered a Google Earth Engine project fo
 
     You need to update your Google Earth Engine project name to `imagery_scraping/config/google_config.json`. The format (for me) was `ee-YOUR_GMAIL_NAME`. Note, please do not push your project name to GitHub.
 
-3. **Query File**
+3. **Query File (Optional)**
 
-    The file `imagery_scraping/config/query.json` contains an example of how you should query imageries. You need to provide the latitude and longitude in WGS84 format.
+    The file `imagery_scraping/config/query.json` contains an example of how you should query imageries. You need to provide the latitude and longitude in WGS84 format. In our work, we mainly use shapefile from DHS directly.
 
-3. **Running the Application**
+4. **Running the Application**
 
     Example:
 
@@ -53,9 +84,14 @@ Before you start, make sure you have registered a Google Earth Engine project fo
     
     to extract the imagery.
 
-4. **Visualization**
+5. **Visualization (Optional)**
 
     To see the imagery, you need to download the imagery data from Google Drive first. We provide sample data in `imagery_scraping/data` and a [notebook](imagery_scraping/visualization.ipynb) to see the imagery you queried in true color. Note that this is only a visualization; the original data is much richer and contains more than the three RGB channels. For training, we should use the original data instead of the true-color image alone.
+
+6. **Getting All Imagery**
+
+    We recommend using this [notebook](imagery_scraping/get_imagery.ipynb) to download all imagery and keep track of progress as GEE has a upper limit of 3000 jobs at the same time. You will need to download the imagery and save to an accessible location (we will refer to `path_to_parent_imagery_folder` in later sections), each of its subdirectory should be country code + year + source (e.g. ET2019S2 for Ethiopia 2019 Sentinel 2). The notebook should already be formatting the export using this naming convention.
+
 
 ## Summarizing the dataset
 
@@ -73,13 +109,13 @@ After having the splits in `survey_processing/processed_data`, you can finetune 
 
 
 ```bash
-python modelling/dino/finetune_spatial.py --fold 1 --model_name dinov2_vitb14 --imagery_path {path_to_parent_imagery_folder} --batch_size 8 --imagery_source L
+python modelling/dino/finetune_spatial.py --fold 1 --model_name dinov2_vitb14 --imagery_path {path_to_parent_imagery_folder} --batch_size 8 --imagery_source L --num_epochs 20
 ```
 
 Finetuning sentinel imagery, the normal command is 
 
 ```bash
-python modelling/dino/finetune_spatial.py --fold 1 --model_name dinov2_vitb14 --imagery_path {path_to_parent_imagery_folder} --batch_size 1 --imagery_source S
+python modelling/dino/finetune_spatial.py --fold 1 --model_name dinov2_vitb14 --imagery_path {path_to_parent_imagery_folder} --batch_size 1 --imagery_source S --num_epochs 10
 ```
 
 Note that to get a cross-validated result, you should use fold 1 to 5.
@@ -92,10 +128,10 @@ python modelling/dino/finetune_temporal.py --model_name dinov2_vitb14 --imagery_
 
 and replace `L` to `S` for sentinel finetuning.
 
-For evalution, make sure the finetuned models are in `modelling/dino/model` and run 
+For evaluation, make sure the all 1-5 finetuned spatial models  (or the finetuned temporal model for temporal evaluation) are in `modelling/dino/model` and run 
 
 ```bash
-python modelling/dino/evaluate.py --use_checkpoint --imagery_source L --mode spatial
+python modelling/dino/evaluate.py --use_checkpoint --imagery_path {path_to_parent_imagery_folder} --imagery_source L --mode spatial
 ```
 
 Change the `--mode` to `temporal` for temporal evaluation, and change `L` to `S` for imagery sources.

@@ -170,3 +170,4 @@ rgb/
 full_img/
 selected_1000/
 archive/
+*.pth

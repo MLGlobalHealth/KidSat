@@ -16,11 +16,12 @@ import numpy as np
 
 
 def evaluate(fold, use_checkpoint = False, imagery_path = None, imagery_source = None, mode = 'temporal'):
+    model_par_dir = r'modelling/dino/model/'
     if use_checkpoint:
         if mode == 'temporal':
-            checkpoint = f'dinov2_vitb14_temporal_best_{imagery_source}.pth'
+            checkpoint = f'{model_par_dir}dinov2_vitb14_temporal_best_{imagery_source}.pth'
         elif mode == 'spatial':
-            checkpoint = f'dinov2_vitb14_{fold}_all_cluster_best_{imagery_source}.pth'
+            checkpoint = f'{model_par_dir}dinov2_vitb14_{fold}_all_cluster_best_{imagery_source}.pth'
         else:
             raise Exception()
     model_output_dim = 768
@@ -34,13 +35,13 @@ def evaluate(fold, use_checkpoint = False, imagery_path = None, imagery_source =
 
     import pandas as pd
     from tqdm import tqdm
-
+    data_folder = r'survey_processing/processed_data/'
     if mode == 'spatial':
-        train_df = pd.read_csv(f'train_fold_{fold}.csv', index_col=0)
-        test_df = pd.read_csv(f'test_fold_{fold}.csv', index_col=0)
+        train_df = pd.read_csv(f'{data_folder}train_fold_{fold}.csv', index_col=0)
+        test_df = pd.read_csv(f'{data_folder}test_fold_{fold}.csv', index_col=0)
     elif mode == 'temporal':
-        train_df = pd.read_csv(f'before_2020.csv', index_col=0)
-        test_df = pd.read_csv(f'after_2020.csv', index_col=0)
+        train_df = pd.read_csv(f'{data_folder}before_2020.csv', index_col=0)
+        test_df = pd.read_csv(f'{data_folder}after_2020.csv', index_col=0)
     available_imagery = []
     import os
     for d in os.listdir(imagery_path):

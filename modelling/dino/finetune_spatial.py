@@ -10,7 +10,6 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image    
 import re
-from transformers import ViTModel, ViTConfig
 
 import torch.nn as nn
 import imageio
