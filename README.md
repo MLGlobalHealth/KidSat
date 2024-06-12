@@ -93,7 +93,7 @@ Before you start, make sure you have registered a Google Earth Engine project fo
     We recommend using this [notebook](imagery_scraping/get_imagery.ipynb) to download all imagery and keep track of progress as GEE has a upper limit of 3000 jobs at the same time. You will need to download the imagery and save to an accessible location (we will refer to `path_to_parent_imagery_folder` in later sections), each of its subdirectory should be country code + year + source (e.g. ET2019S2 for Ethiopia 2019 Sentinel 2). The notebook should already be formatting the export using this naming convention.
 
 
-## Summarizing the dataset
+## Summarizing the Dataset
 
 Collect all DHS data to `survey_processing/dhs_data`. The following command
 
@@ -102,6 +102,10 @@ python survey_processing/main.py survey_processing/dhs_data
 ```
 
 would create 5 splits of the training and test data for spatial analysis and before/after 2020 split for temporal analysis.
+
+## Experiment with MOSAIKS
+
+The MOSAIKS features were extracted using [IDinsight](https://github.com/IDinsight/mosaiks#mosaiks-satellite-imagery-featurization) package.
 
 ## Experiment with DINOv2
 
