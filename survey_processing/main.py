@@ -679,9 +679,10 @@ def process_dhs(parent_dir, config_file):
     
 
 def save_split(df):
+    save_par_dir = r'survey_processing/processed_data/'
+    df.to_csv(f'{save_par_dir}dhs_variables.csv', index=False)
     df = df.sample(frac=1, random_state=42)
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
-    save_par_dir = r'survey_processing/processed_data/'
     fold = 1
     for train_index, test_index in kf.split(df):
         # Generate train and test subsets
