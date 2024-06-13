@@ -7,6 +7,8 @@ This is a repository for code of NeurIPS benchmark and dataset submission 2024.
 
 ## Getting All DHS Data
 
+The Demographic and Health Surveys (DHS) program gathers and shares vital data on population, health, and nutrition in developing countries to inform public health policies. Their collection procedures and methods are listed [here](https://dhsprogram.com/data/data-collection.cfm).
+
 To access DHS data, please follow these steps:
 
 1. **Register for DHS Access:**
@@ -105,7 +107,7 @@ would create 5 splits of the training and test data for spatial analysis and bef
 
 ## Experiment with MOSAIKS
 
-The MOSAIKS features were extracted using [IDinsight](https://github.com/IDinsight/mosaiks#mosaiks-satellite-imagery-featurization) package.
+The MOSAIKS features were extracted using [IDinsight](https://github.com/IDinsight/mosaiks#mosaiks-satellite-imagery-featurization) package. A [notebook](modelling/mosaiks/main.ipynb) is provided in this repository for getting all features for MOSAIKS.
 
 ## Experiment with DINOv2
 

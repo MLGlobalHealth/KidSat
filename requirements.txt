@@ -10,3 +10,4 @@ torchvision==0.17.1
 scikit-learn==1.4.1
 geopandas==0.14.4
 mosaiks==1.0.1
+dask==2024.5.0
