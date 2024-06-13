@@ -63,10 +63,10 @@ Before you start, make sure you have registered a Google Earth Engine project fo
     The file `imagery_scraping/config/query.json` contains an example of how you should query imageries. You need to provide the latitude and longitude in WGS84 format. In our work, we mainly use shapefile from DHS directly.
 
 4. **Running the Application**
+    You first need to go to the `imagery_scraping` directory
 
     Example:
 
-    You first need to go to the `imagery_scraping` directory
 
     An example of usage is shown below:
 
@@ -141,12 +141,43 @@ python modelling/dino/evaluate.py --use_checkpoint --imagery_path {path_to_paren
 Change the `--mode` to `temporal` for temporal evaluation, and change `L` to `S` for imagery sources.
 Remove the `--use_checkpoint` for evaluating on raw DINO models.
 
-## Experiment with SatMAE (To be updated)
-- `cd` to `modelling/finetuning`, and download fMoW-non-temporal SatMAE checkpoint from [here](https://zenodo.org/record/7369797/files/fmow_pretrain.pth). (There is a checkpoint at `/data/coml-satellites/orie4868/SatMAE/fmow-pretrain.pth`)
-- Run the following:
-```sh
-python -m finetune --model_name satmae --pretrained_model $CHECKPOINT_PATH --training_df_path ./DHS_2019_Image_Path.csv --output_dir $OUTPUT_DIR --img_size=224
-```
-- (There will be `IncompatibleKeys` warning, but this is expected since we are discarding the decoder part of SatMAE)
+## Experiment with SatMAE
+### Finetuning
+To run the finetuning process, you first need to download the checkpoints for fMoW-SatMAE [non-temporal](https://zenodo.org/record/7369797/files/fmow_pretrain.pth) or [temporal](https://zenodo.org/record/7369797/files/pretrain_fmow_temporal.pth). Then run the following:
 
-Currently the temporal SatMAE is not supported yet. This is because the data doesn't really make sense to use in SatMAE's temporal context. SatMAE uses 3 different timestamps of the same location to improve performance.
+```sh
+python -m modelling.satmae.satmae_finetune --pretrained_ckpt $CHECKPOINT_PATH --dhs_path ./survey_processing/processed_data/train_fold_1.csv --output_dir $OUTPUT_DIR --imagery_path $IMAGERY_PATH
+```
+Arguments:
+- `--pretrained_ckpt`: Checkpoint of pretrained SatMAE model.
+- `--imagery_path`: Path to imagery folder
+- `--dhs_path`: Path to DHS `.csv` file
+- `--output_path`: Path to export the output. A unique subdirectory will be created.
+- `--batch_size`
+- `--random_seed`
+- `--sentinel`: Landsat is used by default. Turn this on to use Sentinel imagery
+- `--temporal`: Add this flag to use the temporal mode
+- `--epochs`: Number of epochs
+- `--stopping_delta`: Delta for early stopping
+- `--stopping_patience`: Early stopping patience
+- `--loss`: Either `l1` (default) or `l2`.
+- `--lr`: Learning rate
+- `--weight_decay`: Weight decay for Adam optimizer
+- `--enable_profiling`: Enable reporting of loading/inference time.
+
+
+### Evaluation
+Evaluation consists of 2 steps: exporting the model output, and perform Ridge Regression. Since exporting the model output is expensive, we split it into 2 separate modules:
+
+To carry out the first step, edit the file `modelling/satmae/satmae_finetune` and change the `SATMAE_PATHS` variable accordingly. For each entry, you can put all the model checkpoints you need to evaluate or `None` to use the pretrained checkpoint, along with their fold (1-5). You do not have to put the entries in any order, nor need to put all the folds, but the script caches the data from different folds in memory, which helps significantly reduce the time for loading and preprocessing the satellite images.
+```sh
+python -m modelling.satmae.satmae_finetune --output_dir $OUTPUT_DIR --imagery_path $IMAGERY_PATH
+```
+Arguments
+- `--imagery_path`: Path to imagery folder
+- `--output_path`: Path to export the output. A unique subdirectory will be created.
+- `--batch_size`
+- `--sentinel`: Landsat is used by default. Turn this on to use Sentinel imagery
+- `--temporal`: Add this flag to use the temporal mode
+
+This will export data as Numpy arrays in `.npy` files in the output location, which has the shape `(num_samples, 1025)`. The first 1024 columns (i.e `arr[:, :1024]`) is the predicted feature vector from the model, and the last column (i.e `arr[:, 1024]`) is the target. You can then adapt the script `modelling/satmae/eval_dhs.py` to conduct Ridge Regression or more advanced regression.

@@ -1,26 +1,20 @@
-import pandas as pd
-from tqdm import tqdm
-import numpy as np
-import rasterio
 import os
-from argparse import Namespace, ArgumentParser
-
 import uuid
+from argparse import ArgumentParser, Namespace
 
-
-from util_methods import *
-from satmae import build_satmae_temporal_finetune, build_satmae_finetune
-
-from torch.utils.data import Dataset, DataLoader
-import torch
-
-
-
-import torch.nn as nn
-import os
 import imageio
+import numpy as np
+import pandas as pd
+import rasterio
+import torch
+import torch.nn as nn
+from torch.nn import L1Loss, L2Loss
 from torch.optim import Adam
-from torch.nn import L1Loss
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
+
+from ..util_methods import *
+from . import build_satmae_finetune, build_satmae_temporal_finetune
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -30,11 +24,8 @@ except ImportError:
     TENSORBOARD_FOUND = False
 
 
-assert torch.cuda.is_available(), "Please do yourself a favour and use GPU"
+assert torch.cuda.is_available(), "Using GPU is strongly recommended"
 device = torch.device("cuda")
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
-os.environ["TORCH_HOME"] = "/data/coml-satellites/torch_models"
-
 
 
 def main(args):
@@ -68,20 +59,39 @@ def main(args):
         "hv271",
         "v312",
     ]
-    train_dataset, val_dataset, num_classes = get_datasets(args.dhs_path, args.imagery_path, predict_target, temporal=args.temporal, landsat=args.landsat)
+    train_dataset, val_dataset, num_classes = get_datasets(
+        args.dhs_path,
+        args.imagery_path,
+        predict_target,
+        temporal=args.temporal,
+        landsat=args.landsat,
+    )
 
     # Set your desired seed
     set_seed(args.random_seed)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, persistent_workers=True)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=4,
+        persistent_workers=True,
+    )
 
     model_args = Namespace(
-                num_classes=99,
-                drop_path=0.1,
-                global_pool=False,
-                satmae_type="vit_large_patch16",
-                pretrained_model=args.pretrained_ckpt,
-            )
+        num_classes=99,
+        drop_path=0.1,
+        global_pool=False,
+        satmae_type="vit_large_patch16",
+        pretrained_model=args.pretrained_ckpt,
+    )
     if args.temporal:
         base_model = build_satmae_temporal_finetune(model_args)
     else:
@@ -97,7 +107,7 @@ def main(args):
         loss_fn = L2Loss()
     else:
         raise ValueError("Loss function other than 'l1' or 'l2' not supported")
-        
+
     best_error = np.inf
     curr_patience = args.stopping_patience
 
@@ -113,7 +123,7 @@ def main(args):
         print("Training...")
         if args.enable_profiling:
             timer_start.record()
-            
+
         for batch in tqdm(train_loader):
             images, targets = batch
             images, targets = images.to(device), targets.to(device)
@@ -123,7 +133,7 @@ def main(args):
                 torch.cuda.synchronize()
                 loading_time = timer_start.elapsed_time(timer_end)
                 timer_start.record()
-                
+
             # Forward pass
             outputs = model(images)
             loss = loss_fn(outputs, targets)
@@ -176,7 +186,7 @@ def main(args):
                 stopping = True
         else:
             curr_patience = args.stopping_patience
-            
+
         if mean_val_loss < best_error:
             save_checkpoint(
                 model,
@@ -187,8 +197,9 @@ def main(args):
             )
             best_error = mean_val_loss
         print("Output dir:", outdir)
-        print(f"Epoch [{epoch+1}/{args.epochs}], Validation Loss: {mean_val_loss}, Individual Loss: {mean_indiv_loss}")
-            
+        print(
+            f"Epoch [{epoch+1}/{args.epochs}], Validation Loss: {mean_val_loss}, Individual Loss: {mean_indiv_loss}"
+        )
 
         if tb_writer:
             tb_writer.add_scalar("val_loss", mean_val_loss, iteration)
@@ -203,8 +214,6 @@ def main(args):
         if stopping:
             break
         break
-
-
 
 
 if __name__ == "__main__":
@@ -225,4 +234,3 @@ if __name__ == "__main__":
     parser.add_argument("--pretrained_ckpt", type=str, default="")
     parser.add_argument("--enable_profiling", action="store_true")
     main(parser.parse_args())
-
