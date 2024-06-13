@@ -23,22 +23,26 @@ try:
 except ImportError:
     TENSORBOARD_FOUND = False
 
-# sorry couldn't figure out a better way to do this
+# Please change this accordingly. The example one is LandSat non-temporal.
+# The first 5 are the non-finetuned models, the rest are the finetuned model.
 SATMAE_PATHS = [
     (None, 1),
     (None, 2),
     (None, 3),
     (None, 4),
     (None, 5),
-    ("/data/output/52518326-c", 1),
-    ("/data/output/c125a540-5", 2),
-    ("/data/output/03f0e579-b", 3),
-    ("/data/output/6a1fce5c-b", 4),
-    ("/data/output/fa681052-0", 5),
-    # ("/data/output/58b9ae03-b", 1),
-    # ("/data/output/c125a540-5", 2),
-    # ("/data/output/03f0e579-b", 3),
+    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_1", 1),
+    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_2", 2),
+    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_3", 3),
+    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_4", 4),
+    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_5", 5),
 ]
+
+# Here is for the temporal model, remember to set the --temporal flag.
+# SATMAE_PATHS = [
+#     (None, 0),
+#     ("/data/model/SatMAE/satmae_landsat_temporal", 0),
+# ]
 
 assert torch.cuda.is_available(), "Using GPU is strongly recommended"
 device = torch.device("cuda" if torch.cuda.is_available() else "CPU")
