@@ -220,7 +220,7 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel
         
  
         export_params = {
-            'description': target_df[name_colname][i],
+            'description': str(target_df[name_colname][i]),
             'folder': drive,
             'scale': resolution_m,  # This is the resolution in meters
             'region': region,
