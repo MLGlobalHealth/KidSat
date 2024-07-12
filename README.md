@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This is a repository for code of NeurIPS benchmark and dataset submission 2024.
+This is a repository for the work **KidSat: satellite imagery to map childhood poverty dataset and benchmark**.
 
 
 ## Getting All DHS Data
