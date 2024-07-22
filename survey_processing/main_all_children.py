@@ -738,7 +738,7 @@ def process_dhs(parent_dir, config_file):
                 if sub_f.__contains__('GE'):
                     shape_file = os.path.join(parent_dir, f, sub_f)
                     gdf = gpd.read_file(shape_file)
-                    # Append to the list of GeoDataFrames
+                    # Append to the list of GeoDataFrames.
                     gdfs.append(gdf)
     combined_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True))
 
