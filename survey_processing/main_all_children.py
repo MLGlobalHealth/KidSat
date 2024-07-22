@@ -642,6 +642,18 @@ def check_file_integrity(parent_dir, all_files, country_code):
 
 
 def process_dhs(parent_dir, config_file):
+    """
+    Uses the get_poverty() function to get DHS data and deprivation indicators for each country/year surveyed.
+    Then all the dhs/poverty/gps data is combined into 3 dataframes which are aggregated by cluster
+    This is split into train and test folds, and saved as csvs.
+
+    Parameters:
+        parent_dir (str): The path to the directory containing the DHS data files.
+        config_file (str): The path to the JSON file containing the config information.
+
+    Returns:
+        None
+    """
     # load config json files, check all data is in folder
     if parent_dir[-1]!='/':
         parent_dir+=r'/'
@@ -671,6 +683,7 @@ def process_dhs(parent_dir, config_file):
         if 'DHS' in f:
             dhs_dfs.append(pd.read_csv(os.path.join(parent_dir,f,'dhs_variables.csv')))
 
+    # group dhs data by cluster and preprocess based on config from JSON file
     thresholds = config_data['dhs_variable_lim']
     columns_to_encode = config_data['categorical_columns']
     matches = config_data['matches']
@@ -706,6 +719,7 @@ def process_dhs(parent_dir, config_file):
     cols_to_select = existing_cols + additional_cols + ['id']
     dhs_df_all = dhs_df_all[list(set(cols_to_select))]
 
+    # group poverty data by cluster
     print('Aggregating poverty data...')
     poverty_dfs_agg = []
     for df in tqdm(pov_dfs):
@@ -745,6 +759,7 @@ def process_dhs(parent_dir, config_file):
     dhs_df_all.drop_duplicates(inplace=True)
     centroid_df = centroid_df.reset_index(drop=True)
 
+    # merge dhs, poverty data and GPS data
     merged_centroid_df = pd.merge(centroid_df, pov_df_all, left_on='CENTROID_ID', right_on='id', how='left')
     merged_centroid_df = pd.merge(merged_centroid_df, dhs_df_all, left_on='CENTROID_ID', right_on='id', how='left')
 
