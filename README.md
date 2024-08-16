@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This is a repository for the work **KidSat: satellite imagery to map childhood poverty dataset and benchmark**.
+This is a repository for the work **KidSat: satellite imagery to map childhood poverty dataset and benchmark** https://arxiv.org/abs/2407.05986 .
 
 ![Figure 1](https://i.imgur.com/xLbiFwq.png)
 
