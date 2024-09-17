@@ -10,3 +10,4 @@ scikit-learn==1.4.0
 geopandas==0.13.2
 mosaiks==1.0.1
 dask==2023.7.0
+imageio==2.35.1

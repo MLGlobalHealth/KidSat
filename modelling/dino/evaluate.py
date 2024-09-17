@@ -6,26 +6,46 @@ import torch
 from torch import nn
 import torchvision.transforms as transforms
 from PIL import Image
-import os
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import KFold, cross_val_score
 from sklearn.linear_model import RidgeCV
-
-from sklearn.metrics import mean_absolute_error
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import RidgeCV
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
+import pandas as pd
+from tqdm import tqdm
 
-def evaluate(fold, use_checkpoint = False, imagery_path = None, imagery_source = None, mode = 'temporal'):
+def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_named_target = True, imagery_path = None, imagery_source = None, mode = 'temporal', model_output_dim = 768):
     model_par_dir = r'modelling/dino/model/'
-    if use_checkpoint:
-        if mode == 'temporal':
-            checkpoint = f'{model_par_dir}dinov2_vitb14_temporal_best_{imagery_source}.pth'
-        elif mode == 'spatial':
-            checkpoint = f'{model_par_dir}dinov2_vitb14_{fold}_all_cluster_best_{imagery_source}.pth'
-        else:
-            raise Exception()
-    model_output_dim = 768
 
+    
+    if use_checkpoint:
+        if model_not_named_target:
+            named_target = target
+        else:
+            named_target = ''
+        if mode == 'temporal':
+            checkpoint = f'{model_par_dir}{model_name}_temporal_best_{imagery_source}{named_target}_.pth'
+        elif mode == 'spatial':
+            checkpoint = f'{model_par_dir}{model_name}_{fold}_all_cluster_best_{imagery_source}{named_target}_.pth'
+        elif mode == 'one_country':
+            checkpoint = f'{model_par_dir}{model_name}_{fold}_one_country_best_{imagery_source}{named_target}_.pth'
+        else:
+            raise Exception(mode)
+
+    print(f"Evaluating {model_name} on fold {fold} with target {target} using checkpoint {use_checkpoint}")
+
+    if target == '':
+        eval_target = 'deprived_sev'
+        target_size = 99
+    else:
+        eval_target = target
+        if model_not_named_target:
+            target_size = 1
+        else:
+            target_size = 99
+        
     if imagery_source == 'L':
         normalization = 30000.
         transform_dim = 336
@@ -33,8 +53,6 @@ def evaluate(fold, use_checkpoint = False, imagery_path = None, imagery_source =
         normalization = 3000.
         transform_dim = 994
 
-    import pandas as pd
-    from tqdm import tqdm
     data_folder = r'survey_processing/processed_data/'
     if mode == 'spatial':
         train_df = pd.read_csv(f'{data_folder}train_fold_{fold}.csv', index_col=0)
@@ -42,6 +60,10 @@ def evaluate(fold, use_checkpoint = False, imagery_path = None, imagery_source =
     elif mode == 'temporal':
         train_df = pd.read_csv(f'{data_folder}before_2020.csv', index_col=0)
         test_df = pd.read_csv(f'{data_folder}after_2020.csv', index_col=0)
+    elif mode == 'one_country':
+        train_df = pd.read_csv(f'{data_folder}train_fold_{fold}.csv', index_col=0)
+        test_df = pd.read_csv(f'{data_folder}test_fold_{fold}.csv', index_col=0)
+    
     available_imagery = []
     import os
     for d in os.listdir(imagery_path):
@@ -51,7 +73,8 @@ def evaluate(fold, use_checkpoint = False, imagery_path = None, imagery_source =
     available_centroids = [f.split('/')[-1][:-4] for f in available_imagery]
     train_df = train_df[train_df['CENTROID_ID'].isin(available_centroids)]
     test_df = test_df[test_df['CENTROID_ID'].isin(available_centroids)]
-
+    if test_df.empty:
+        raise Exception("Empty test set")
     def filter_contains(query):
         """
         Returns a list of items that contain the given query substring.
@@ -88,14 +111,16 @@ def evaluate(fold, use_checkpoint = False, imagery_path = None, imagery_source =
         return img.astype(np.uint8)  # Convert to uint8
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    base_model = torch.hub.load('facebookresearch/dinov2', f'dinov2_vitb14')
+    if 'dino_' in model_name:
+        base_model = torch.hub.load('facebookresearch/dino:main', model_name)
+    elif 'dinov2_' in model_name:
+        base_model = torch.hub.load('facebookresearch/dinov2', model_name)
     class ViTForRegression(nn.Module):
         def __init__(self, base_model):
             super().__init__()
             self.base_model = base_model
             # Assuming the original model outputs 768 features from the transformer
-            self.regression_head = nn.Linear(model_output_dim, 99)  # Output one continuous variable
+            self.regression_head = nn.Linear(model_output_dim, target_size)  # Output one continuous variable
 
         def forward(self, pixel_values):
             outputs = self.base_model(pixel_values)
@@ -109,74 +134,125 @@ def evaluate(fold, use_checkpoint = False, imagery_path = None, imagery_source =
         state_dict = torch.load(checkpoint)
         model.load_state_dict(state_dict['model_state_dict'])
 
+    class CustomDataset(Dataset):
+        def __init__(self, dataframe, transform):
+            self.dataframe = dataframe
+            self.transform = transform
+
+        def __len__(self):
+            return len(self.dataframe) 
+
+        def __getitem__(self, idx):
+            item = self.dataframe.iloc[idx]
+            image = load_and_preprocess_image(item['imagery_path'])
+            # Apply feature extractor if necessary, might need adjustments
+            image_tensor = self.transform(Image.fromarray(image))
+
+            return image_tensor, item[eval_target]
+        
+    transform = transforms.Compose([
+        transforms.Resize((transform_dim, transform_dim)),  # Resize the image to the input size expected by the model
+        transforms.ToTensor(),  # Convert the image to a PyTorch tensor
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize with ImageNet's mean and std
+    ])
+
+    train_dataset = CustomDataset(train_df, transform)
+    val_dataset = CustomDataset(test_df, transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
     model.to(device)
     model.eval()
     
-    def get_features(df):
-        dino_features = []
-        transform = transforms.Compose([
-            transforms.Resize((transform_dim, transform_dim)),  # Resize the image to the input size expected by the model
-            transforms.ToTensor(),  # Convert the image to a PyTorch tensor
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize with ImageNet's mean and std
-        ])
-        
-        for idx in tqdm(range(len(df))):
-            image = load_and_preprocess_image(df.iloc[idx]['imagery_path'])
-            image_tensor = transform(Image.fromarray(image))
-            with torch.no_grad():
-                features = model.forward_encoder(torch.stack([image_tensor]).to(device))
-            for f in features:
-                dino_features.append(f.cpu())
+    X_train = []
+    y_train = []
+    for batch in tqdm(train_loader):
+        images, targets = batch
+        images, targets = images.to(device), targets.to(device)
 
-                # with open(filename, 'wb') as file:
-                #     pickle.dump(dino_features, file)
-        return dino_features
-    train_sat_features = get_features(train_df)
-    test_sat_features = get_features(test_df)
+        # Forward pass
+        with torch.no_grad():
+            outputs = model.base_model(images)
+        X_train.append(outputs.cpu()[0].numpy())
+        y_train.append(targets.cpu()[0].numpy())
 
-    train_features_df = pd.DataFrame([f.tolist() for f in train_sat_features])
-    test_features_df = pd.DataFrame([f.tolist() for f in test_sat_features])
-    train_target = train_df['deprived_sev']
-    test_target = test_df['deprived_sev']
-    # Create a list of alphas to consider for RidgeCV
-    alphas = np.logspace(-6, 6, 13)
+    torch.cuda.empty_cache()
+    # Validation phase
+    X_test = []
+    y_test = []
+    for batch in tqdm(val_loader):
+        images, targets = batch
+        images, targets = images.to(device), targets.to(device)
 
-    # Creating the pipeline with StandardScaler and RidgeCV
-    # RidgeCV is initialized with a list of alphas
-    pipeline = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
+        # Forward pass
+        with torch.no_grad():
+            outputs = model.base_model(images)
+        X_test.append(outputs.cpu()[0].numpy())
+        y_test.append(targets.cpu()[0].numpy())
 
-    # Fit the model
-    pipeline.fit(train_features_df, train_target)
+    alphas = np.logspace(-6, 6, 20)
+    # Define the model and pipeline
+    ridge_pipeline = Pipeline([
+        # ('scaler', StandardScaler()),
+        ('ridge', RidgeCV(alphas=alphas, cv=5, scoring='neg_mean_absolute_error'))
+    ])
 
+    # Define the cross-validation strategy
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
-    # Predict on test data
-    y_pred = pipeline.predict(test_features_df)
+    # Perform cross-validation
+    cv_scores = cross_val_score(ridge_pipeline, X_train, y_train, cv=kf, scoring='neg_mean_absolute_error')
 
-    # Evaluate the model using Mean Absolute Error (MAE)
-    mae = mean_absolute_error(test_target, y_pred)
+    # Print the cross-validation scores
+    print("Cross-validation scores (negative MAE):", cv_scores)
+    print("Mean cross-validation score (negative MAE):", cv_scores.mean())
 
-    print("Mean Absolute Error on Test Set:", mae)
-    return mae
+    ridge_pipeline.fit(X_train, y_train)
+    test_score= np.mean(np.abs(ridge_pipeline.predict(X_test)- y_test))
+    print("Test Score (negative MAE):", test_score)
+
+    return test_score
+
 
 
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run satellite image processing model training.')
+    parser.add_argument('--fold', type=str, default='1', help='The fold number')
+    parser.add_argument('--model_name', type=str, default='dinov2_vitb14', help='The model name')
+    parser.add_argument('--target', type=str,default='', help='The target variable')
     parser.add_argument('--imagery_source', type=str, default='L', help='L for Landsat and S for Sentinel')
     parser.add_argument('--imagery_path', type=str, help='The parent directory of all imagery')
     parser.add_argument('--mode', type=str, default='temporal', help='Evaluating temporal model or spatial model')
+    parser.add_argument('--model_output_dim', type=int, default=768, help='The output dimension of the model')
     parser.add_argument('--use_checkpoint', action='store_true', help='Whether to use checkpoint file. If not, use raw model.')
+    parser.add_argument('--model_not_named_target', action='store_false', help='Whether the model name contains the target variable')
 
     
     args = parser.parse_args()
     maes = []
     if args.mode == 'temporal':
-        print(evaluate(1, args.use_checkpoint, args.imagery_path, args.imagery_source, args.mode))
-    else:
+        print(evaluate("1", args.model_name,args.target, args.use_checkpoint,args.model_not_named_target, args.imagery_path, args.imagery_source, args.mode,  args.model_output_dim))
+    elif args.mode == 'spatial':
         for i in range(5):
             fold = i + 1
-            mae = evaluate(fold, args.use_checkpoint,args.imagery_path, args.imagery_source, args.mode)
+            mae = evaluate(str(fold), args.model_name, args.target, args.use_checkpoint,args.model_not_named_target,args.imagery_path, args.imagery_source, args.mode, args.model_output_dim)
             maes.append(mae)
         print(np.mean(maes), np.std(maes)/np.sqrt(5))
-  
+    elif args.mode == 'one_country':
+        COUNTRIES = ['Madagascar', 'Burundi', 'Uganda', 'Mozambique', 'Rwanda',
+                    'Zambia', 'Tanzania', 'Malawi', 'Ethiopia', 'Kenya', 'Zimbabwe',
+                    'Lesotho', 'South Africa', 'Angola', 'Eswatini', 'Comoros']
+        
+        n_samples = len(COUNTRIES)
+        for country in COUNTRIES:
+            try:
+                mae = evaluate(country, args.model_name, args.target, args.use_checkpoint,args.model_not_named_target,args.imagery_path, args.imagery_source, args.mode, args.model_output_dim)
+                maes.append(mae)
+            except Exception as e:
+                print(f"Error in {country}: {e}")
+                n_samples -= 1
+        print(np.mean(maes), np.std(maes)/np.sqrt(n_samples))
+    else:
+        raise Exception("Invalid mode")

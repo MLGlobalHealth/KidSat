@@ -171,3 +171,6 @@ full_img/
 selected_1000/
 archive/
 *.pth
+*.csv
+submit_*
+config*

@@ -1,3 +1,4 @@
+
 import argparse
 import pandas as pd
 from tqdm import tqdm
@@ -16,7 +17,7 @@ import imageio
 from sklearn.model_selection import train_test_split    
 from torch.optim import Adam
 from torch.nn import L1Loss
-def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, img_size = None):
+def main(country, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, imagery_size = None):
     
     if imagery_source == 'L':
         normalization = 30000.
@@ -27,12 +28,13 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     else:
         raise Exception("Unsupported imagery source")
     
-    if not img_size is None:
-        imagery_size = img_size
+    if not imagery_size is None:
+        imagery_size = imagery_size
+
     data_folder = r'survey_processing/processed_data'
 
-    train_df = pd.read_csv(f'{data_folder}/train_fold_{fold}.csv', index_col=0)
-    test_df = pd.read_csv(f'{data_folder}/test_fold_{fold}.csv', index_col=0)
+    train_df = pd.read_csv(f'{data_folder}/train_fold_{country}.csv', index_col=0)
+    test_df = pd.read_csv(f'{data_folder}/test_fold_{country}.csv', index_col=0)
 
     available_imagery = []
     for d in os.listdir(imagery_path):
@@ -42,6 +44,9 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     available_centroids = [f.split('/')[-1][:-4] for f in available_imagery]
     train_df = train_df[train_df['CENTROID_ID'].isin(available_centroids)]
     test_df = test_df[test_df['CENTROID_ID'].isin(available_centroids)]
+    if test_df.empty:
+        raise Exception(f'No test data available for {country}')
+
 
     def filter_contains(query):
         """
@@ -60,7 +65,7 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
                 return item
     train_df['imagery_path'] = train_df['CENTROID_ID'].apply(filter_contains)
     test_df['imagery_path'] = test_df['CENTROID_ID'].apply(filter_contains)
-    if target == '':
+    if target== '':
         predict_target = ['h10', 'h3', 'h31', 'h5', 'h7', 'h9', 'hc70', 'hv109', 'hv121', 'hv106', 'hv201', 'hv204', 'hv205', 'hv216', 'hv225', 'hv271', 'v312']
     else:
         predict_target = [target]
@@ -162,8 +167,8 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ViTForRegression(base_model).to(device)
-    best_model = f'modelling/dino/model/{model_name}_{fold}_all_cluster_best_{imagery_source}{target}_.pth'
-    last_model = f'modelling/dino/model/{model_name}_{fold}_all_cluster_last_{imagery_source}{target}_.pth'
+    best_model = f'modelling/dino/model/{model_name}_{country}_one_country_best_{imagery_source}{target}.pth'
+    last_model = f'modelling/dino/model/{model_name}_{country}_one_country_last_{imagery_source}{target}.pth'
     if os.path.exists(last_model):
         last_state_dict = torch.load(last_model)
         best_error = torch.load(best_model)['loss']

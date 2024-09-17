@@ -15,7 +15,7 @@ import imageio
 from sklearn.model_selection import train_test_split    
 from torch.optim import Adam
 from torch.nn import L1Loss
-def main(model_name,imagery_path, imagery_source,emb_size, batch_size, num_epochs):
+def main(model_name, target, imagery_path, imagery_source,emb_size, batch_size, num_epochs, img_size = None):
 
     if imagery_source == 'L':
         normalization = 30000.
@@ -25,7 +25,8 @@ def main(model_name,imagery_path, imagery_source,emb_size, batch_size, num_epoch
         imagery_size = 994
     else:
         raise Exception("Unsupported imagery source")
-
+    if not img_size is None:
+        imagery_size = img_size
     data_folder = r'survey_processing/processed_data'
 
     train_df = pd.read_csv(f'{data_folder}/before_2020.csv', index_col=0)
@@ -58,7 +59,10 @@ def main(model_name,imagery_path, imagery_source,emb_size, batch_size, num_epoch
     train_df['imagery_path'] = train_df['CENTROID_ID'].apply(filter_contains)
     test_df['imagery_path'] = test_df['CENTROID_ID'].apply(filter_contains)
 
-    predict_target = ['h10', 'h3', 'h31', 'h5', 'h7', 'h9', 'hc70', 'hv109', 'hv121', 'hv106', 'hv201', 'hv204', 'hv205', 'hv216', 'hv225', 'hv271', 'v312']
+    if target =='':
+        predict_target = ['h10', 'h3', 'h31', 'h5', 'h7', 'h9', 'hc70', 'hv109', 'hv121', 'hv106', 'hv201', 'hv204', 'hv205', 'hv216', 'hv225', 'hv271', 'v312']
+    else:
+        predict_target = [target]
 
     filtered_predict_target = []
     for col in predict_target:
@@ -69,21 +73,23 @@ def main(model_name,imagery_path, imagery_source,emb_size, batch_size, num_epoch
     train_df = train_df.dropna(subset=filtered_predict_target)
     predict_target = sorted(filtered_predict_target)
 
-    def load_and_preprocess_image(path):
+    def load_and_preprocess_image(path, grouped_bands=[4,3,2]):
         with rasterio.open(path) as src:
-            # Read the specific bands (4, 3, 2 for RGB)
-            r = src.read(4)  # Band 4 for Red
-            g = src.read(3)  # Band 3 for Green
-            b = src.read(2)  # Band 2 for Blue
-            
+            b1 = src.read(grouped_bands[0])
+            b2 = src.read(grouped_bands[1])
+            b3 = src.read(grouped_bands[2])
+
             # Stack and normalize the bands
-            img = np.dstack((r, g, b))
-            img = img / normalization*255.  # Normalize to [0, 1] (if required)
-            
-        img = np.nan_to_num(img, nan=0, posinf=255, neginf=0)
-        img = np.clip(img, 0, 255)  # Clip values to be within the 0-255 range
-        
-        return img.astype(np.uint8)  # Convert to uint8
+            img = np.dstack((b1, b2, b3))
+            img = img / normalization  # Normalize to [0, 1] (if required)
+
+        img = np.nan_to_num(img, nan=0, posinf=1, neginf=0)
+        img = np.clip(img, 0, 1)  # Clip values to be within the 0-1 range
+
+        # Scale back to [0, 255] for visualization purposes
+        img = (img * 255).astype(np.uint8)
+
+        return img
 
     def set_seed(seed):
         torch.manual_seed(seed)
@@ -121,7 +127,7 @@ def main(model_name,imagery_path, imagery_source,emb_size, batch_size, num_epoch
     transform = transforms.Compose([
         transforms.Resize((imagery_size, imagery_size)),  # Resize the image to the input size expected by the model
         transforms.ToTensor(),  # Convert the image to a PyTorch tensor
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize with ImageNet's mean and std
+        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize with ImageNet's mean and std
     ])
 
     train_dataset = CustomDataset(train, transform)
@@ -132,7 +138,11 @@ def main(model_name,imagery_path, imagery_source,emb_size, batch_size, num_epoch
 
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    base_model = torch.hub.load('facebookresearch/dinov2', model_name)
+
+    if 'dino_' in model_name:
+        base_model = torch.hub.load('facebookresearch/dino:main', model_name)
+    elif 'dinov2_' in model_name:
+        base_model = torch.hub.load('facebookresearch/dinov2', model_name)
 
     def save_checkpoint(model, optimizer, epoch, loss, filename="checkpoint.pth"):
         torch.save({
@@ -157,8 +167,8 @@ def main(model_name,imagery_path, imagery_source,emb_size, batch_size, num_epoch
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ViTForRegression(base_model).to(device)
-    best_model = f'modelling/dino/model/{model_name}_temporal_best_{imagery_source}.pth'
-    last_model = f'modelling/dino/model/{model_name}_temporal_last_{imagery_source}.pth'
+    best_model = f'modelling/dino/model/{model_name}_temporal_best_{imagery_source}{target}_.pth'
+    last_model = f'modelling/dino/model/{model_name}_temporal_last_{imagery_source}{target}_.pth'
     if os.path.exists(last_model):
         last_state_dict = torch.load(last_model)
         best_error = torch.load(best_model)['loss']
@@ -226,10 +236,12 @@ def main(model_name,imagery_path, imagery_source,emb_size, batch_size, num_epoch
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run satellite image processing model training.')
     parser.add_argument('--model_name', type=str, help='Name of the model')
+    parser.add_argument('--target', type=str,default='', help='Target variable')
     parser.add_argument('--imagery_path', type=str, help='The parent directory of all imagery')
     parser.add_argument('--imagery_source', type=str, default='L', help='L for Landsat and S for Sentinel')
     parser.add_argument('--emb_size', type=int, default=768, help='Size of the model output')
     parser.add_argument('--batch_size', type=int, help='Batch size')
     parser.add_argument('--num_epochs', type=int, default=20, help='Number of epochs for training')
+    parser.add_argument('--imagery_size', type=int, help='Size of the imagery')
     args = parser.parse_args()
-    main(args.model_name, args.imagery_path, args.imagery_source,args.emb_size, args.batch_size, args.num_epochs)
+    main(args.model_name, args.target, args.imagery_path, args.imagery_source,args.emb_size, args.batch_size, args.num_epochs, args.imagery_size)
