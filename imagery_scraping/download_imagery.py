@@ -26,7 +26,7 @@ from collections import Counter
 # data collections from google earth
 # from https://developers.google.com/earth-engine/datasets/catalog/landsat
 LANDSAT8_COLLECTIONS = [ # 2013 - Now
-    "LANDSAT/LC08/C02/T1_L2",        # Raw Image Tier 1
+    "LANDSAT/LC08/C02/T1",        # Raw Image Tier 1
     "LANDSAT/LC08/C01/T1_RT",     # Raw Image Tier 1 + Read-Time
     "LANDSAT/LC08/C01/T2",        # Raw Image Tier 2
     # 'LANDSAT/LC08/C01/T1_L2',     # Surface reflecttance Tier 1
@@ -37,7 +37,7 @@ LANDSAT8_COLLECTIONS = [ # 2013 - Now
 ]
 
 LANDSAT7_COLLECTIONS = [ # 1999 - 2021
-    "LANDSAT/LE07/C02/T1_L2",        # Raw Image Tier 1
+    "LANDSAT/LE07/C02/T1",        # Raw Image Tier 1
     'LANDSAT/LE07/C01/T2',        # Raw Image Tier 2
     # 'LANDSAT/LE07/C01/T1_L2',     # Surface Reflectance Tier 1
     # 'LANDSAT/LE07/C01/T2_L2',     # Surface Reflectance Tier 2
@@ -46,7 +46,7 @@ LANDSAT7_COLLECTIONS = [ # 1999 - 2021
 ]
 
 LANDSAT5_COLLECTIONS = [ # 1984 - 2012
-    "LANDSAT/LT05/C02/T1_L2",        # Raw Image Tier 1 (Collection 1)
+    "LANDSAT/LT05/C02/T1",        # Raw Image Tier 1 (Collection 1)
     'LANDSAT/LT05/C01/T2',        # Raw Image Tier 2 (Collection 1)
     # 'LANDSAT/LT05/C01/T1_L2',     # Surface Reflectance Tier 1 (Collection 1)
     # 'LANDSAT/LT05/C01/T2_L2',     # Surface Reflectance Tier 2 (Collection 1)
@@ -60,8 +60,8 @@ LANDSAT9_COLLECTIONS = [ # 2021 - Now
 ]
 
 SENTINEL2_COLLECTIONS = [ # 2015 - Now
-    "COPERNICUS/S2",
     "COPERNICUS/S2_HARMONIZED",
+    "COPERNICUS/S2",
     "COPERNICUS/S2_SR_HARMONIZED",
 ]
 SENSORS = {
