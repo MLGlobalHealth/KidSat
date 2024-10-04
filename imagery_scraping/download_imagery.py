@@ -140,7 +140,7 @@ def get_column_name(df, substring, exclude_pattern = None):
                 return c
     return None
 
-def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel = True, verbose = False):
+def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, dimension = None, parallel = True, verbose = False):
     """
     Downloads satellite imagery for specified locations and parameters.
 
@@ -151,6 +151,7 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel
     - sensor (str): Sensor code ('L5', 'L7', 'L8', 'L9', 'S2') indicating the imagery source.
     - range_km (float): Range in kilometers to define the area around each location.
     - rgb_only (bool): Whether get only RBG bands for the image
+    - dimension (str): Dimension of the image in pixels. For example, '224x224'.
 
     Raises:
     - NotImplementedError: If an unsupported sensor is requested.
@@ -189,14 +190,17 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel
             target_df[lon_colname][i],
             range_km
         )
-        if sensor[0] == 'L':
-            resolution_m = 30
-            cloud_filter = 'CLOUD_COVER'
-        elif sensor[0] == 'S':
-            resolution_m = 10
-            cloud_filter = 'CLOUDY_PIXEL_PERCENTAGE'
+        if resolution_m == None:
+            if sensor[0] == 'L':
+                resolution_m = 30
+                cloud_filter = 'CLOUD_COVER'
+            elif sensor[0] == 'S':
+                resolution_m = 10
+                cloud_filter = 'CLOUDY_PIXEL_PERCENTAGE'
+            else:
+                raise (NotImplementedError)
         else:
-            raise (NotImplementedError)
+            resolution_m = resolution_m
         cloudy_pixel_percentage_threshold = 20
         collection_size = 0
         while collection_size == 0 and cloudy_pixel_percentage_threshold<=100:
@@ -227,6 +231,9 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel
             'fileFormat': 'GeoTIFF',
             'maxPixels': 1e10
         }
+
+        if dimension != None:
+            export_params['dimensions'] = dimension
 
         export_task = ee.batch.Export.image.toDrive(image, **export_params)
         export_task.start()
