@@ -26,7 +26,7 @@ from collections import Counter
 # data collections from google earth
 # from https://developers.google.com/earth-engine/datasets/catalog/landsat
 LANDSAT8_COLLECTIONS = [ # 2013 - Now
-    "LANDSAT/LC08/C02/T1_L2",        # Raw Image Tier 1
+    "LANDSAT/LC08/C02/T1",        # Raw Image Tier 1
     "LANDSAT/LC08/C01/T1_RT",     # Raw Image Tier 1 + Read-Time
     "LANDSAT/LC08/C01/T2",        # Raw Image Tier 2
     # 'LANDSAT/LC08/C01/T1_L2',     # Surface reflecttance Tier 1
@@ -37,7 +37,7 @@ LANDSAT8_COLLECTIONS = [ # 2013 - Now
 ]
 
 LANDSAT7_COLLECTIONS = [ # 1999 - 2021
-    "LANDSAT/LE07/C02/T1_L2",        # Raw Image Tier 1
+    "LANDSAT/LE07/C02/T1",        # Raw Image Tier 1
     'LANDSAT/LE07/C01/T2',        # Raw Image Tier 2
     # 'LANDSAT/LE07/C01/T1_L2',     # Surface Reflectance Tier 1
     # 'LANDSAT/LE07/C01/T2_L2',     # Surface Reflectance Tier 2
@@ -46,7 +46,7 @@ LANDSAT7_COLLECTIONS = [ # 1999 - 2021
 ]
 
 LANDSAT5_COLLECTIONS = [ # 1984 - 2012
-    "LANDSAT/LT05/C02/T1_L2",        # Raw Image Tier 1 (Collection 1)
+    "LANDSAT/LT05/C02/T1",        # Raw Image Tier 1 (Collection 1)
     'LANDSAT/LT05/C01/T2',        # Raw Image Tier 2 (Collection 1)
     # 'LANDSAT/LT05/C01/T1_L2',     # Surface Reflectance Tier 1 (Collection 1)
     # 'LANDSAT/LT05/C01/T2_L2',     # Surface Reflectance Tier 2 (Collection 1)
@@ -60,8 +60,8 @@ LANDSAT9_COLLECTIONS = [ # 2021 - Now
 ]
 
 SENTINEL2_COLLECTIONS = [ # 2015 - Now
-    "COPERNICUS/S2",
     "COPERNICUS/S2_HARMONIZED",
+    "COPERNICUS/S2",
     "COPERNICUS/S2_SR_HARMONIZED",
 ]
 SENSORS = {
@@ -140,7 +140,7 @@ def get_column_name(df, substring, exclude_pattern = None):
                 return c
     return None
 
-def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel = True, verbose = False):
+def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, dimension = None, parallel = True, verbose = False):
     """
     Downloads satellite imagery for specified locations and parameters.
 
@@ -151,6 +151,7 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel
     - sensor (str): Sensor code ('L5', 'L7', 'L8', 'L9', 'S2') indicating the imagery source.
     - range_km (float): Range in kilometers to define the area around each location.
     - rgb_only (bool): Whether get only RBG bands for the image
+    - dimension (str): Dimension of the image in pixels. For example, '224x224'.
 
     Raises:
     - NotImplementedError: If an unsupported sensor is requested.
@@ -189,14 +190,17 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel
             target_df[lon_colname][i],
             range_km
         )
-        if sensor[0] == 'L':
-            resolution_m = 30
-            cloud_filter = 'CLOUD_COVER'
-        elif sensor[0] == 'S':
-            resolution_m = 10
-            cloud_filter = 'CLOUDY_PIXEL_PERCENTAGE'
+        if resolution_m == None:
+            if sensor[0] == 'L':
+                resolution_m = 30
+                cloud_filter = 'CLOUD_COVER'
+            elif sensor[0] == 'S':
+                resolution_m = 10
+                cloud_filter = 'CLOUDY_PIXEL_PERCENTAGE'
+            else:
+                raise (NotImplementedError)
         else:
-            raise (NotImplementedError)
+            resolution_m = resolution_m
         cloudy_pixel_percentage_threshold = 20
         collection_size = 0
         while collection_size == 0 and cloudy_pixel_percentage_threshold<=100:
@@ -227,6 +231,9 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, parallel
             'fileFormat': 'GeoTIFF',
             'maxPixels': 1e10
         }
+
+        if dimension != None:
+            export_params['dimensions'] = dimension
 
         export_task = ee.batch.Export.image.toDrive(image, **export_params)
         export_task.start()
