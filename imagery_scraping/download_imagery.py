@@ -140,7 +140,7 @@ def get_column_name(df, substring, exclude_pattern = None):
                 return c
     return None
 
-def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, dimension = None, parallel = True, verbose = False):
+def download_imagery(filepath, drive, year, sensor, range_km, rgb_only,  dimension = None, start_ind = 0, verbose = False):
     """
     Downloads satellite imagery for specified locations and parameters.
 
@@ -183,27 +183,24 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, dimensio
     else:
         image_collection = SENSORS[sensor][0] # default raw image
     
-    for i in tqdm(range(len(target_df))):
+    for i in tqdm(range(start_ind,len(target_df))):
         
         region = create_square(
             target_df[lat_colname][i],
             target_df[lon_colname][i],
             range_km
         )
-        if resolution_m == None:
-            if sensor[0] == 'L':
-                resolution_m = 30
-                cloud_filter = 'CLOUD_COVER'
-            elif sensor[0] == 'S':
-                resolution_m = 10
-                cloud_filter = 'CLOUDY_PIXEL_PERCENTAGE'
-            else:
-                raise (NotImplementedError)
+        if sensor[0] == 'L':
+            resolution_m = 30
+            cloud_filter = 'CLOUD_COVER'
+        elif sensor[0] == 'S':
+            resolution_m = 10
+            cloud_filter = 'CLOUDY_PIXEL_PERCENTAGE'
         else:
-            resolution_m = resolution_m
+            raise (NotImplementedError)
         cloudy_pixel_percentage_threshold = 20
         collection_size = 0
-        while collection_size == 0 and cloudy_pixel_percentage_threshold<=100:
+        while collection_size < 3 and cloudy_pixel_percentage_threshold<=100:
             collection = ee.ImageCollection(image_collection) \
                 .filterBounds(region) \
                 .filterDate(start_date, end_date) \
@@ -212,37 +209,46 @@ def download_imagery(filepath, drive, year, sensor, range_km, rgb_only, dimensio
             # Check if the collection is empty
             collection_size = collection.size().getInfo()
         image = collection.median()
+        def convert_to_uint32(image):
+            return image.toUint32()
+
+        # Convert all images in the collection to have consistent data types
+        collection = collection.map(convert_to_uint32)
         # if cloudy_pixel_percentage_threshold==110:
         #     print(cloudy_pixel_percentage_threshold)
 
-        if rgb_only:
-            if 'T2' in image_collection:
-                image = image.select(['SR_B4', 'SR_B3', 'SR_B2'])
-            else:
-                image = image.select(['B4', 'B3', 'B2'])
+        def export_imagery(image):
+            if rgb_only:
+                if 'T2' in image_collection:
+                    image = image.select(['SR_B4', 'SR_B3', 'SR_B2'])
+                else:
+                    image = image.select(['B4', 'B3', 'B2'])
 
+            date_acquired = image.get('system:time_start').getInfo()
+
+            export_params = {
+                'description': target_df[name_colname][i]+'-'+str(date_acquired),
+                'folder': drive,
+                'scale': resolution_m,  # This is the resolution in meters
+                'region': region,
+                'fileFormat': 'GeoTIFF',
+                'maxPixels': 1e10
+            }
+
+            if dimension != None:
+                export_params['dimensions'] = dimension
+
+            export_task = ee.batch.Export.image.toDrive(image, **export_params)
+            export_task.start()
+        for j in range(min(3, collection_size)):
+            image_list = collection.toList(collection.size())
+            export_imagery(ee.Image(image_list.get(j)))
         
- 
-        export_params = {
-            'description': target_df[name_colname][i],
-            'folder': drive,
-            'scale': resolution_m,  # This is the resolution in meters
-            'region': region,
-            'fileFormat': 'GeoTIFF',
-            'maxPixels': 1e10
-        }
-
-        if dimension != None:
-            export_params['dimensions'] = dimension
-
-        export_task = ee.batch.Export.image.toDrive(image, **export_params)
-        export_task.start()
-        
-        if not parallel:
-            while export_task.status()['state'] in ['READY', 'RUNNING']:
-                time.sleep(1)
-            if export_task.status()['state'] == 'FAILED':
-                print(export_task.status())
-                error_msg = 'Image.clipToBoundsAndScale: Parameter \'input\' is required.'
-                if export_task.status()['error_message'] == error_msg:
-                    warnings.warn("The dataset does not have the imagery given the filters. Try another timespan, coordinates, or sensor.")
+        # if not parallel:
+        #     while export_task.status()['state'] in ['READY', 'RUNNING']:
+        #         time.sleep(1)
+        #     if export_task.status()['state'] == 'FAILED':
+        #         print(export_task.status())
+        #         error_msg = 'Image.clipToBoundsAndScale: Parameter \'input\' is required.'
+        #         if export_task.status()['error_message'] == error_msg:
+        #             warnings.warn("The dataset does not have the imagery given the filters. Try another timespan, coordinates, or sensor.")
