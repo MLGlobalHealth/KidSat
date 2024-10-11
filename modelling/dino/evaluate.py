@@ -33,8 +33,9 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
             checkpoint = f'{model_par_dir}{model_name}_{fold}_one_country_best_{imagery_source}{named_target}_.pth'
         else:
             raise Exception(mode)
+        
 
-    print(f"Evaluating {model_name} on fold {fold} with target {target} using checkpoint {use_checkpoint}")
+    print(f"Evaluating {model_name} on fold {fold} with target {target} using checkpoint {checkpoint}")
 
     if target == '':
         eval_target = 'deprived_sev'
@@ -45,6 +46,7 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
             target_size = 1
         else:
             target_size = 99
+
         
     if imagery_source == 'L':
         normalization = 30000.
@@ -55,14 +57,14 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
 
     data_folder = r'survey_processing/processed_data/'
     if mode == 'spatial':
-        train_df = pd.read_csv(f'{data_folder}train_fold_{fold}.csv', index_col=0)
-        test_df = pd.read_csv(f'{data_folder}test_fold_{fold}.csv', index_col=0)
+        train_df = pd.read_csv(f'{data_folder}train_fold_{fold}.csv')
+        test_df = pd.read_csv(f'{data_folder}test_fold_{fold}.csv')
     elif mode == 'temporal':
-        train_df = pd.read_csv(f'{data_folder}before_2020.csv', index_col=0)
-        test_df = pd.read_csv(f'{data_folder}after_2020.csv', index_col=0)
+        train_df = pd.read_csv(f'{data_folder}before_2020.csv')
+        test_df = pd.read_csv(f'{data_folder}after_2020.csv')
     elif mode == 'one_country':
-        train_df = pd.read_csv(f'{data_folder}train_fold_{fold}.csv', index_col=0)
-        test_df = pd.read_csv(f'{data_folder}test_fold_{fold}.csv', index_col=0)
+        train_df = pd.read_csv(f'{data_folder}train_fold_{fold}.csv')
+        test_df = pd.read_csv(f'{data_folder}test_fold_{fold}.csv')
     
     available_imagery = []
     import os
@@ -159,7 +161,7 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
     train_dataset = CustomDataset(train_df, transform)
     val_dataset = CustomDataset(test_df, transform)
 
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
     model.to(device)
     model.eval()
@@ -189,6 +191,27 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
             outputs = model.base_model(images)
         X_test.append(outputs.cpu()[0].numpy())
         y_test.append(targets.cpu()[0].numpy())
+
+    # Convert lists to numpy arrays
+    X_train = np.array(X_train)
+    y_train = np.array(y_train)
+    X_test = np.array(X_test)
+    y_test = np.array(y_test)
+
+    # Convert to pandas DataFrames
+    df_X_train = pd.DataFrame(X_train)
+    df_y_train = pd.DataFrame(y_train, columns=['target'])
+    df_X_test = pd.DataFrame(X_test)
+    df_y_test = pd.DataFrame(y_test, columns=['target'])
+
+    results_folder = f'modelling/dino/results/split_{mode}{imagery_source}_{fold}/'
+    if not os.path.exists(results_folder):
+        os.makedirs(results_folder)
+    # Save to CSV files
+    df_X_train.to_csv(results_folder+'X_train.csv', index=False)
+    df_y_train.to_csv(results_folder+'y_train.csv', index=False)
+    df_X_test.to_csv(results_folder+'X_test.csv', index=False)
+    df_y_test.to_csv(results_folder+'y_test.csv', index=False)
 
     alphas = np.logspace(-6, 6, 20)
     # Define the model and pipeline

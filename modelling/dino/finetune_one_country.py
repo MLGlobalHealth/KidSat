@@ -33,8 +33,8 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
 
     data_folder = r'survey_processing/processed_data'
 
-    train_df = pd.read_csv(f'{data_folder}/train_fold_{country}.csv', index_col=0)
-    test_df = pd.read_csv(f'{data_folder}/test_fold_{country}.csv', index_col=0)
+    train_df = pd.read_csv(f'{data_folder}/train_fold_{country}.csv')
+    test_df = pd.read_csv(f'{data_folder}/test_fold_{country}.csv')
 
     available_imagery = []
     for d in os.listdir(imagery_path):

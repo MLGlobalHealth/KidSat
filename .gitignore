@@ -172,5 +172,9 @@ selected_1000/
 archive/
 *.pth
 *.csv
+*.pdf
+*.svg
+*.png
+*.json
 submit_*
 config*

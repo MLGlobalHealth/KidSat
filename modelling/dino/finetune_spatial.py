@@ -31,8 +31,8 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
         imagery_size = img_size
     data_folder = r'survey_processing/processed_data'
 
-    train_df = pd.read_csv(f'{data_folder}/train_fold_{fold}.csv', index_col=0)
-    test_df = pd.read_csv(f'{data_folder}/test_fold_{fold}.csv', index_col=0)
+    train_df = pd.read_csv(f'{data_folder}/train_fold_{fold}.csv')
+    test_df = pd.read_csv(f'{data_folder}/test_fold_{fold}.csv')
 
     available_imagery = []
     for d in os.listdir(imagery_path):
@@ -74,6 +74,7 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     train_df = train_df.dropna(subset=filtered_predict_target)
     predict_target = sorted(filtered_predict_target)
 
+    print(train_df.shape)
     def load_and_preprocess_image(path, grouped_bands=[4,3,2]):
         with rasterio.open(path) as src:
             b1 = src.read(grouped_bands[0])
@@ -104,8 +105,7 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     # Set your desired seed
     seed = 42
     set_seed(seed)
-
-    train, validation = train_test_split(train_df, test_size=0.2, random_state=42)
+    train, validation = train_test_split(train_df, test_size=0.2, random_state=seed)
 
     class CustomDataset(Dataset):
         def __init__(self, dataframe, transform):
@@ -167,7 +167,7 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     if os.path.exists(last_model):
         last_state_dict = torch.load(last_model)
         best_error = torch.load(best_model)['loss']
-        epoch_ran = last_state_dict['epoch']
+        epochs_ran = last_state_dict['epoch']
         model.load_state_dict(last_state_dict['model_state_dict'])
         print('Found existing model')
     else:
