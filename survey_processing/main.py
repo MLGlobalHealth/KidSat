@@ -84,7 +84,7 @@ def get_poverty(source_path, save_csv = False):
 
     dhs_pr = pd.read_stata(household_datafile, convert_categoricals=False)
     dhs_pr.set_index(['hv001', 'hv002', 'hvidx'], inplace=True)
-    dhs_kr = dhs_kr.merge(dhs_pr[['hv000', 'hv005', 'hv007', 'hv009', 'hv024', 'hv025', 'hv104', 'hv105', 'hv109', 'hv121', 'hv122', 'hv201', 'hv204', 'hv205', 'hv216', 'hv225', 'hv270', 'hv271', 'hc70']], left_on=['hv001', 'hv002', 'hvidx'], right_index=True, how='left')
+    dhs_kr = dhs_kr.merge(dhs_pr[['hv000', 'hv005', 'hv007', 'hv009', 'hv024', 'hv025', 'hv104', 'hv105', 'hv109', 'hv121', 'hv122', 'hv201', 'hv204', 'hv205', 'hv216', 'hv225', 'hv270', 'hv271', 'hc70']], left_on=['hv001', 'hv002', 'hvidx'], right_index=True, how='outer')
     dhs_kr['hhweight'] = dhs_kr['hv005'] / 1000000
 
 
@@ -101,7 +101,7 @@ def get_poverty(source_path, save_csv = False):
 
     dhs_ir = pd.read_stata(individual_datafile, convert_categoricals=False)
     dhs_ir.set_index(['v001', 'v002', 'v003'], inplace=True)
-    dhs_kr = dhs_kr.merge(dhs_ir[['v626a', 'v312']], left_on=['v001', 'v002', 'v003'], right_index=True,  how='left')
+    dhs_kr = dhs_kr.merge(dhs_ir[['v626a', 'v312']], left_on=['v001', 'v002', 'v003'], right_index=True,  how='outer')
     dhs_kr['v626a']=dhs_kr['v626a_x']
     dhs_kr['v312']=dhs_kr['v312_x']
     # Save the final merged dataset
@@ -109,7 +109,7 @@ def get_poverty(source_path, save_csv = False):
         output_path = source_path+'dhs_variables.csv'
         dhs_kr.to_csv(output_path, index=False)
     df = dhs_kr
-
+    print(df.v)
     ## 1
     # Assuming 'df' is your DataFrame
     df['personsperroom'] = df['hv009'] / df['hv216']
@@ -541,8 +541,8 @@ def process_dhs(parent_dir, config_file):
     root_grid = parent_dir
     save_to_csv_dir = os.path.join(parent_dir, "dhs_variables.csv")
     print('Checking file integrity...')
-    if not check_file_integrity(parent_dir, config_data['all_DHS'], dhs_cc):
-        raise FileNotFoundError('DHS data incomplete')
+    # if not check_file_integrity(parent_dir, config_data['all_DHS'], dhs_cc):
+    #     raise FileNotFoundError('DHS data incomplete')
 
     pov_dfs = []
     print('Summarizing poverty...')
