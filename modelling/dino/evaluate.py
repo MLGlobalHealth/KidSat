@@ -72,9 +72,13 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
         if d[-2] == imagery_source:
             for f in os.listdir(os.path.join(imagery_path, d)):
                 available_imagery.append(os.path.join(imagery_path, d, f))
-    available_centroids = [f.split('/')[-1][:-4] for f in available_imagery]
-    train_df = train_df[train_df['CENTROID_ID'].isin(available_centroids)]
-    test_df = test_df[test_df['CENTROID_ID'].isin(available_centroids)]
+    def is_available(centroid_id):
+        for centroid in available_imagery:
+            if centroid_id in centroid:
+                return True
+        return False
+    train_df = train_df[train_df['CENTROID_ID'].apply(is_available)]
+    test_df = test_df[test_df['CENTROID_ID'].apply(is_available)]
     if test_df.empty:
         raise Exception("Empty test set")
     def filter_contains(query):

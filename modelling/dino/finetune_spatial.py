@@ -39,9 +39,14 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
         if d[-2] == imagery_source:
             for f in os.listdir(os.path.join(imagery_path, d)):
                 available_imagery.append(os.path.join(imagery_path, d, f))
-    available_centroids = [f.split('/')[-1][:-4] for f in available_imagery]
-    train_df = train_df[train_df['CENTROID_ID'].isin(available_centroids)]
-    test_df = test_df[test_df['CENTROID_ID'].isin(available_centroids)]
+
+    def is_available(centroid_id):
+        for centroid in available_imagery:
+            if centroid_id in centroid:
+                return True
+        return False
+    train_df = train_df[train_df['CENTROID_ID'].apply(is_available)]
+    test_df = test_df[test_df['CENTROID_ID'].apply(is_available)]
 
     def filter_contains(query):
         """
@@ -74,7 +79,6 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     train_df = train_df.dropna(subset=filtered_predict_target)
     predict_target = sorted(filtered_predict_target)
 
-    print(train_df.shape)
     def load_and_preprocess_image(path, grouped_bands=[4,3,2]):
         with rasterio.open(path) as src:
             b1 = src.read(grouped_bands[0])
@@ -161,6 +165,7 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
             return torch.sigmoid(self.regression_head(outputs))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using {device}")
     model = ViTForRegression(base_model).to(device)
     best_model = f'modelling/dino/model/{model_name}_{fold}_all_cluster_best_{imagery_source}{target}_.pth'
     last_model = f'modelling/dino/model/{model_name}_{fold}_all_cluster_last_{imagery_source}{target}_.pth'

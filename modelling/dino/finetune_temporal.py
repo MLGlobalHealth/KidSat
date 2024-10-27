@@ -37,9 +37,13 @@ def main(model_name, target, imagery_path, imagery_source,emb_size, batch_size, 
         if d[-2] == imagery_source:
             for f in os.listdir(os.path.join(imagery_path, d)):
                 available_imagery.append(os.path.join(imagery_path, d, f))
-    available_centroids = [f.split('/')[-1][:-4] for f in available_imagery]
-    train_df = train_df[train_df['CENTROID_ID'].isin(available_centroids)]
-    test_df = test_df[test_df['CENTROID_ID'].isin(available_centroids)]
+    def is_available(centroid_id):
+        for centroid in available_imagery:
+            if centroid_id in centroid:
+                return True
+        return False
+    train_df = train_df[train_df['CENTROID_ID'].apply(is_available)]
+    test_df = test_df[test_df['CENTROID_ID'].apply(is_available)]
 
     def filter_contains(query):
         """
