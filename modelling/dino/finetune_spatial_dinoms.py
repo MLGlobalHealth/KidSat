@@ -1,4 +1,3 @@
-
 import argparse
 import pandas as pd
 from tqdm import tqdm
@@ -11,7 +10,6 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image    
 import re
-
 import torch.nn as nn
 import imageio
 from sklearn.model_selection import train_test_split    
@@ -19,8 +17,7 @@ from torch.optim import Adam
 from torch.nn import L1Loss
 import warnings
 warnings.filterwarnings("ignore")
-
-def main(country, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, imagery_size = None):
+def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, img_size = None):
     
     if imagery_source == 'L':
         normalization = 30000.
@@ -31,19 +28,19 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
     else:
         raise Exception("Unsupported imagery source")
     
-    if not imagery_size is None:
-        imagery_size = imagery_size
-
+    if not img_size is None:
+        imagery_size = img_size
     data_folder = r'survey_processing/processed_data'
 
-    train_df = pd.read_csv(f'{data_folder}/train_fold_{country}.csv')
-    test_df = pd.read_csv(f'{data_folder}/test_fold_{country}.csv')
+    train_df = pd.read_csv(f'{data_folder}/train_fold_{fold}.csv')
+    test_df = pd.read_csv(f'{data_folder}/test_fold_{fold}.csv')
 
     available_imagery = []
     for d in os.listdir(imagery_path):
         if d[-2] == imagery_source:
             for f in os.listdir(os.path.join(imagery_path, d)):
                 available_imagery.append(os.path.join(imagery_path, d, f))
+
     def is_available(centroid_id):
         for centroid in available_imagery:
             if centroid_id in centroid:
@@ -51,9 +48,6 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
         return False
     train_df = train_df[train_df['CENTROID_ID'].apply(is_available)]
     test_df = test_df[test_df['CENTROID_ID'].apply(is_available)]
-    if test_df.empty:
-        raise Exception(f'No test data available for {country}')
-
 
     def filter_contains(query):
         """
@@ -72,7 +66,7 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
                 return item
     train_df['imagery_path'] = train_df['CENTROID_ID'].apply(filter_contains)
     test_df['imagery_path'] = test_df['CENTROID_ID'].apply(filter_contains)
-    if target== '':
+    if target == '':
         predict_target = ['h10', 'h3', 'h31', 'h5', 'h7', 'h9', 'hc70', 'hv109', 'hv121', 'hv106', 'hv201', 'hv204', 'hv205', 'hv216', 'hv225', 'hv271', 'v312']
     else:
         predict_target = [target]
@@ -85,20 +79,16 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
     # Drop rows with NaN values in the filtered subset of columns
     train_df = train_df.dropna(subset=filtered_predict_target)
     predict_target = sorted(filtered_predict_target)
-
-    def load_and_preprocess_image(path, grouped_bands=[4,3,2]):
+    output_size = len(predict_target)
+    def load_and_preprocess_image(path):
         with rasterio.open(path) as src:
-            b1 = src.read(grouped_bands[0])
-            b2 = src.read(grouped_bands[1])
-            b3 = src.read(grouped_bands[2])
-
-            # Stack and normalize the bands
-            img = np.dstack((b1, b2, b3))
+            bands = src.read()
+            img = bands[:13]
             img = img / normalization  # Normalize to [0, 1] (if required)
-
+        
         img = np.nan_to_num(img, nan=0, posinf=1, neginf=0)
         img = np.clip(img, 0, 1)  # Clip values to be within the 0-1 range
-
+        img = np.transpose(img, (1, 2, 0))
         # Scale back to [0, 255] for visualization purposes
         img = (img * 255).astype(np.uint8)
 
@@ -116,8 +106,7 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
     # Set your desired seed
     seed = 42
     set_seed(seed)
-
-    train, validation = train_test_split(train_df, test_size=0.2, random_state=42)
+    train, validation = train_test_split(train_df, test_size=0.2, random_state=seed)
 
     class CustomDataset(Dataset):
         def __init__(self, dataframe, transform):
@@ -131,25 +120,29 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
             item = self.dataframe.iloc[idx]
             image = load_and_preprocess_image(item['imagery_path'])
             # Apply feature extractor if necessary, might need adjustments
-            image_tensor = self.transform(Image.fromarray(image))
+            image_tensor = self.transform(image)
             
             # Assuming your target is a single scalar
             target = torch.tensor(item[predict_target], dtype=torch.float32)
             return image_tensor, target  # Adjust based on actual output of feature_extractor
 
     transform = transforms.Compose([
-        transforms.Resize((imagery_size, imagery_size)),  # Resize the image to the input size expected by the model
         transforms.ToTensor(),  # Convert the image to a PyTorch tensor
+        transforms.Resize((imagery_size, imagery_size)),  # Resize the image to the input size expected by the model
         # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize with ImageNet's mean and std
     ])
 
     train_dataset = CustomDataset(train, transform)
     val_dataset = CustomDataset(validation, transform)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=batch_size+4)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=batch_size+4)
+    # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=batch_size+4)
+    # val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=batch_size+4)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-    base_model = torch.hub.load('facebookresearch/dinov2', model_name)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using {device}")
+    base_models = [torch.hub.load('facebookresearch/dinov2', model_name).to(device) for _ in range(4)]
 
     def save_checkpoint(model, optimizer, epoch, loss, filename="checkpoint.pth"):
         torch.save({
@@ -161,25 +154,38 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
 
     torch.cuda.empty_cache()
     class ViTForRegression(nn.Module):
-        def __init__(self, base_model):
+        def __init__(self, base_models, grouped_bands=[[4, 3, 2], [8, 4, 2], [13, 1, 3], [12, 8, 2]], emb_size=768, output_size=1):
             super().__init__()
-            self.base_model = base_model
-            # Assuming the original model outputs 768 features from the transformer
-            self.regression_head = nn.Linear(emb_size, len(predict_target))  # Output one continuous variable
+            self.base_models = nn.ModuleList(base_models)
+            self.grouped_bands = torch.tensor(grouped_bands) - 1
+            self.cross_attention = nn.MultiheadAttention(embed_dim=emb_size, num_heads=8)
+            
+            # Update the input size of the regression head to handle concatenation of 4 embeddings
+            self.regression_head = nn.Linear(emb_size * len(grouped_bands), output_size)
 
         def forward(self, pixel_values):
-            outputs = self.base_model(pixel_values)
-            # We use the last hidden state
-            return torch.sigmoid(self.regression_head(outputs))
+            # Extract outputs from each base model with specific band groups
+            outputs = [self.base_models[i](pixel_values[:, self.grouped_bands[i], :, :]) for i in range(len(self.base_models))]
+            
+            # Stack and permute outputs for multihead attention
+            outputs = torch.stack(outputs, dim=0)  # Shape: [num_views, batch_size, emb_size]
+            
+            # Apply cross-attention
+            attn_output, _ = self.cross_attention(outputs, outputs, outputs)  # Shape: [num_views, batch_size, emb_size]
+            
+            # Concatenate the attention output across all views
+            concat_output = torch.cat([attn_output[i] for i in range(attn_output.size(0))], dim=-1)  # Shape: [batch_size, emb_size * num_views]
+            
+            # Pass through regression head
+            return torch.sigmoid(self.regression_head(concat_output))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = ViTForRegression(base_model).to(device)
-    best_model = f'modelling/dino/model/{model_name}_{country}_one_country_best_{imagery_source}{target}.pth'
-    last_model = f'modelling/dino/model/{model_name}_{country}_one_country_last_{imagery_source}{target}.pth'
+    model = ViTForRegression(base_models, output_size=output_size).to(device)
+    best_model = f'modelling/dino/model/{model_name}ms_cat_{fold}_all_cluster_best_{imagery_source}{target}_.pth'
+    last_model = f'modelling/dino/model/{model_name}ms_cat_{fold}_all_cluster_last_{imagery_source}{target}_.pth'
     if os.path.exists(last_model):
         last_state_dict = torch.load(last_model)
         best_error = torch.load(best_model)['loss']
-        epoch_ran = last_state_dict['epoch']
+        epochs_ran = last_state_dict['epoch']
         model.load_state_dict(last_state_dict['model_state_dict'])
         print('Found existing model')
     else:
@@ -189,11 +195,11 @@ def main(country, model_name, target, imagery_path, imagery_source, emb_size, ba
     # Move model to appropriate device
     model.to(device)
 
-    base_model_params = {'params': model.base_model.parameters(), 'lr': 1e-6, 'weight_decay': 1e-6}
+    base_model_params = [{'params': model.parameters(), 'lr': 1e-6, 'weight_decay': 1e-6} for model in model.base_models]
     head_params = {'params': model.regression_head.parameters(), 'lr': 1e-6, 'weight_decay': 1e-6}
 
     # Setup the optimizer
-    optimizer = torch.optim.Adam([base_model_params, head_params])
+    optimizer = torch.optim.Adam(base_model_params+ [head_params])
     loss_fn = L1Loss()
 
     for epoch in range(epochs_ran+1, num_epochs):

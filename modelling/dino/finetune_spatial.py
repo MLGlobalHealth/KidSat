@@ -10,12 +10,13 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image    
 import re
-
 import torch.nn as nn
 import imageio
 from sklearn.model_selection import train_test_split    
 from torch.optim import Adam
 from torch.nn import L1Loss
+import warnings
+warnings.filterwarnings("ignore")
 def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, img_size = None):
     
     if imagery_source == 'L':
@@ -138,8 +139,10 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     train_dataset = CustomDataset(train, transform)
     val_dataset = CustomDataset(validation, transform)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=batch_size+4)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=batch_size+4)
+    # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=batch_size+4)
+    # val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=batch_size+4)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     base_model = torch.hub.load('facebookresearch/dinov2', model_name)
 

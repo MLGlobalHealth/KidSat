@@ -20,23 +20,11 @@ from tqdm import tqdm
 def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_named_target = True, imagery_path = None, imagery_source = None, mode = 'temporal', model_output_dim = 768):
     model_par_dir = r'modelling/dino/model/'
 
-    
-    if use_checkpoint:
-        if model_not_named_target:
-            named_target = target
-        else:
-            named_target = ''
-        if mode == 'temporal':
-            checkpoint = f'{model_par_dir}{model_name}_temporal_best_{imagery_source}{named_target}_.pth'
-        elif mode == 'spatial':
-            checkpoint = f'{model_par_dir}{model_name}_{fold}_all_cluster_best_{imagery_source}{named_target}_.pth'
-        elif mode == 'one_country':
-            checkpoint = f'{model_par_dir}{model_name}_{fold}_one_country_best_{imagery_source}{named_target}_.pth'
-        else:
-            raise Exception(mode)
-        
+    import os
+    best_model = f'{model_name}ms_cat_{fold}_all_cluster_best_{imagery_source}{target}_.pth'
+    checkpoint = os.path.join(model_par_dir, best_model)
 
-    print(f"Evaluating {model_name} on fold {fold} with target {target} using checkpoint {checkpoint}")
+    print(f"Evaluating fold {fold} with target {target} using checkpoint {checkpoint}")
 
     if target == '':
         eval_target = 'deprived_sev'
@@ -57,10 +45,10 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
         transform_dim = 994
 
     data_folder = r'survey_processing/processed_data/'
-    if mode == 'spatial':
+    if 'spatial' in mode:
         train_df = pd.read_csv(f'{data_folder}train_fold_{fold}.csv')
         test_df = pd.read_csv(f'{data_folder}test_fold_{fold}.csv')
-    elif mode == 'temporal':
+    elif 'temporal' in mode:
         train_df = pd.read_csv(f'{data_folder}before_2020.csv')
         test_df = pd.read_csv(f'{data_folder}after_2020.csv')
     elif mode == 'one_country':
@@ -104,39 +92,52 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
 
     def load_and_preprocess_image(path):
         with rasterio.open(path) as src:
-            # Read the specific bands (4, 3, 2 for RGB)
-            r = src.read(4)  # Band 4 for Red
-            g = src.read(3)  # Band 3 for Green
-            b = src.read(2)  # Band 2 for Blue
-            # Stack and normalize the bands
-            img = np.dstack((r, g, b))
-            img = img / normalization*255.  # Normalize to [0, 1] (if required)
-            
-        img = np.nan_to_num(img, nan=0, posinf=255, neginf=0)
-        img = np.clip(img, 0, 255)  # Clip values to be within the 0-255 range
+            bands = src.read()
+            img = bands[:13]
+            img = img / normalization  # Normalize to [0, 1] (if required)
         
-        return img.astype(np.uint8)  # Convert to uint8
+        img = np.nan_to_num(img, nan=0, posinf=1, neginf=0)
+        img = np.clip(img, 0, 1)  # Clip values to be within the 0-1 range
+        img = np.transpose(img, (1, 2, 0))
+        # Scale back to [0, 255] for visualization purposes
+        img = (img * 255).astype(np.uint8)
+
+        return img
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if 'dino_' in model_name:
-        base_model = torch.hub.load('facebookresearch/dino:main', model_name)
-    elif 'dinov2_' in model_name:
-        base_model = torch.hub.load('facebookresearch/dinov2', model_name)
+    base_models = [torch.hub.load('facebookresearch/dinov2', model_name).to(device) for _ in range(4)]
     class ViTForRegression(nn.Module):
-        def __init__(self, base_model):
+        def __init__(self, base_models, grouped_bands=[[4, 3, 2], [8, 4, 2], [13, 1, 3], [12, 8, 2]], emb_size=768, output_size=1):
             super().__init__()
-            self.base_model = base_model
-            # Assuming the original model outputs 768 features from the transformer
-            self.regression_head = nn.Linear(model_output_dim, target_size)  # Output one continuous variable
+            self.base_models = base_models
+            self.grouped_bands = torch.tensor(grouped_bands) - 1
+            self.cross_attention = nn.MultiheadAttention(embed_dim=emb_size, num_heads=8)
+            
+            # Update the input size of the regression head to handle concatenation of 4 embeddings
+            self.regression_head = nn.Linear(emb_size * len(grouped_bands), output_size)
 
-        def forward(self, pixel_values):
-            outputs = self.base_model(pixel_values)
-            # We use the last hidden state
-            return torch.sigmoid(self.regression_head(outputs))
-        
         def forward_encoder(self, pixel_values):
-            return self.base_model(pixel_values)
-    model = ViTForRegression(base_model)
+            # Extract outputs from each base model with specific band groups
+            outputs = [self.base_models[i](pixel_values[:, self.grouped_bands[i], :, :]) for i in range(len(self.base_models))]
+            
+            # Stack and permute outputs for multihead attention
+            outputs = torch.stack(outputs, dim=0)  # Shape: [num_views, batch_size, emb_size]
+            
+            # Apply cross-attention
+            attn_output, _ = self.cross_attention(outputs, outputs, outputs)  # Shape: [num_views, batch_size, emb_size]
+            
+            # Concatenate the attention output across all views
+            concat_output = torch.cat([attn_output[i] for i in range(attn_output.size(0))], dim=-1)  # Shape: [batch_size, emb_size * num_views]
+            
+            return concat_output
+        
+        def forward(self, pixel_values):
+            # Extract outputs from each base model with specific band groups
+            concat_output = self.forward_encoder(pixel_values)
+            # Pass through regression head
+            return torch.sigmoid(self.regression_head(concat_output))
+        
+    model = ViTForRegression(base_models, output_size=target_size).to(device)
     if use_checkpoint:
         state_dict = torch.load(checkpoint)
         model.load_state_dict(state_dict['model_state_dict'])
@@ -147,19 +148,21 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
             self.transform = transform
 
         def __len__(self):
-            return len(self.dataframe) 
+            return len(self.dataframe)
 
         def __getitem__(self, idx):
             item = self.dataframe.iloc[idx]
             image = load_and_preprocess_image(item['imagery_path'])
             # Apply feature extractor if necessary, might need adjustments
-            image_tensor = self.transform(Image.fromarray(image))
-
-            return image_tensor, item[eval_target]
+            image_tensor = self.transform(image)
+            
+            # Assuming your target is a single scalar
+            target = torch.tensor(item[eval_target], dtype=torch.float32)
+            return image_tensor, target  # Adjust based on actual output of feature_extractor
         
     transform = transforms.Compose([
-        transforms.Resize((transform_dim, transform_dim)),  # Resize the image to the input size expected by the model
         transforms.ToTensor(),  # Convert the image to a PyTorch tensor
+        transforms.Resize((transform_dim, transform_dim)),  # Resize the image to the input size expected by the model
         # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize with ImageNet's mean and std
     ])
 
@@ -179,7 +182,7 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
 
         # Forward pass
         with torch.no_grad():
-            outputs = model.base_model(images)
+            outputs = model.forward_encoder(images)
         X_train.append(outputs.cpu()[0].numpy())
         y_train.append(targets.cpu()[0].numpy())
 
@@ -193,7 +196,7 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
 
         # Forward pass
         with torch.no_grad():
-            outputs = model.base_model(images)
+            outputs = model.forward_encoder(images)
         X_test.append(outputs.cpu()[0].numpy())
         y_test.append(targets.cpu()[0].numpy())
 
@@ -262,7 +265,7 @@ if __name__ == '__main__':
     maes = []
     if args.mode == 'temporal':
         print(evaluate("1", args.model_name,args.target, args.use_checkpoint,args.model_not_named_target, args.imagery_path, args.imagery_source, args.mode,  args.model_output_dim))
-    elif args.mode == 'spatial':
+    elif  'spatial' in args.mode:
         for i in range(5):
             fold = i + 1
             mae = evaluate(str(fold), args.model_name, args.target, args.use_checkpoint,args.model_not_named_target,args.imagery_path, args.imagery_source, args.mode, args.model_output_dim)

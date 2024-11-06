@@ -15,6 +15,9 @@ import imageio
 from sklearn.model_selection import train_test_split    
 from torch.optim import Adam
 from torch.nn import L1Loss
+import warnings
+warnings.filterwarnings("ignore")
+
 def main(model_name, target, imagery_path, imagery_source,emb_size, batch_size, num_epochs, img_size = None):
 
     if imagery_source == 'L':
