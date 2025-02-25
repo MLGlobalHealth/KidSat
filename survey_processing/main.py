@@ -818,6 +818,13 @@ def get_nutrition_depr(df):
         if 'hazflag' in df.columns:
             df['nutrition_hazflag'] = df['hazflag']
 
+    df['dep_nutrition_sev'] = 0  # Initialize with NA (no severe deprivation)
+    df.loc[df['hc70'] <= -300, 'dep_nutrition_sev'] = 1  # Set to 1 where severe stunting occurs
+    
+    # Generate moderate nutrition deprivation based on stunting more than -2 standard deviations
+    df['dep_nutrition_mod'] = 0  # Initialize with NA (no moderate deprivation)
+    df.loc[df['hc70'] <= -200, 'dep_nutrition_mod'] = 1 
+
     return df
 
 
@@ -1083,6 +1090,7 @@ def check_file_integrity(parent_dir, all_files, country_code):
         if not any(f in string for string in os.listdir(parent_dir)):
             print(f'{country_code[f[:2]]}\'s data in year {f[-4:]} is missing.')
             complete = False
+            break
     return complete
     
 

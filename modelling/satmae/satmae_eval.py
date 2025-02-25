@@ -14,8 +14,9 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from ..util_methods import *
-from . import build_satmae_finetune, build_satmae_temporal_finetune
-
+from . import build_satmae_finetune, build_satmae_temporal_finetune, build_satmae_ms_finetune
+import warnings
+warnings.filterwarnings("ignore")
 try:
     from torch.utils.tensorboard import SummaryWriter
 
@@ -31,11 +32,11 @@ SATMAE_PATHS = [
     (None, 3),
     (None, 4),
     (None, 5),
-    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_1", 1),
-    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_2", 2),
-    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_3", 3),
-    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_4", 4),
-    ("/data/model/SatMAE/satmae_landsat_nontemporal_fold_5", 5),
+    ("modelling/satmae/model/31ac40ec-5/model_1_best_nl.pth", 1),
+    ("modelling/satmae/model/31ac40ec-5/model_1_best_nl.pth", 2),
+    ("modelling/satmae/model/31ac40ec-5/model_1_best_nl.pth", 3),
+    ("modelling/satmae/model/31ac40ec-5/model_1_best_nl.pth", 4),
+    ("modelling/satmae/model/31ac40ec-5/model_1_best_nl.pth", 5),
 ]
 
 # Here is for the temporal model, remember to set the --temporal flag.
@@ -100,7 +101,7 @@ def main(args, fold, name, outdir=None, model=None, loaders=None):
             )
         else:
             train_dataset, _ = get_datasets(
-                f"data/train_fold_{fold}.csv",
+                f"survey_processing/processed_data/train_fold_{fold}.csv",
                 args.imagery_path,
                 predict_target,
                 split=False,
@@ -109,7 +110,7 @@ def main(args, fold, name, outdir=None, model=None, loaders=None):
                 landsat=args.landsat,
             )
             test_dataset, _ = get_datasets(
-                f"data/test_fold_{fold}.csv",
+                f"survey_processing/processed_data/test_fold_{fold}.csv",
                 args.imagery_path,
                 predict_target,
                 split=False,
@@ -167,14 +168,14 @@ def main(args, fold, name, outdir=None, model=None, loaders=None):
     else:
         base_model = build_fn(
             Namespace(
-                num_classes=0,
+                num_classes=1,
                 drop_path=0.1,
                 global_pool=False,
                 satmae_type="vit_large_patch16",
                 pretrained_model=(
                     "/home/jupyter/ckpts/pretrain_fmow_temporal.pth"
                     if args.temporal
-                    else "/home/jupyter/ckpts/fmow_pretrain.pth"
+                    else 'modelling/satmae/chpt/finetune-vit-large-e7.pth'
                 ),
             )
         )
@@ -193,7 +194,7 @@ def main(args, fold, name, outdir=None, model=None, loaders=None):
                 images, ts, target = batch
                 images, ts = images.to(device), ts.to(device)
                 with torch.no_grad():
-                    outputs = model(images, ts)
+                    outputs = model.forward_features(images, ts)
                     outputs = outputs.cpu().numpy()
 
             else:
@@ -202,7 +203,7 @@ def main(args, fold, name, outdir=None, model=None, loaders=None):
 
                 # Forward pass
                 with torch.no_grad():
-                    outputs = model(images)
+                    outputs = model.forward_features(images)
                     outputs = outputs.cpu().numpy()
 
             # print(outputs.shape)

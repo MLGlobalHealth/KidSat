@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 import pandas as pd
 from tqdm import tqdm
 
-def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_named_target = True, imagery_path = None, imagery_source = None, mode = 'temporal', model_output_dim = 768):
+def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_named_target = True, imagery_path = None, imagery_source = None, mode = 'temporal', model_output_dim = 768, grouped_bands = None):
     model_par_dir = r'modelling/dino/model/'
 
     
@@ -29,7 +29,7 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
         if mode == 'temporal':
             checkpoint = f'{model_par_dir}{model_name}_temporal_best_{imagery_source}{named_target}_.pth'
         elif mode == 'spatial':
-            checkpoint = f'{model_par_dir}{model_name}_{fold}_all_cluster_best_{imagery_source}{named_target}_.pth'
+            checkpoint = f'{model_par_dir}{model_name}_{fold}_{grouped_bands}all_cluster_best_{imagery_source}{named_target}_.pth'
         elif mode == 'one_country':
             checkpoint = f'{model_par_dir}{model_name}_{fold}_one_country_best_{imagery_source}{named_target}_.pth'
         else:
@@ -105,9 +105,9 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
     def load_and_preprocess_image(path):
         with rasterio.open(path) as src:
             # Read the specific bands (4, 3, 2 for RGB)
-            r = src.read(4)  # Band 4 for Red
-            g = src.read(3)  # Band 3 for Green
-            b = src.read(2)  # Band 2 for Blue
+            r = src.read(grouped_bands[0])  # Band 4 for Red
+            g = src.read(grouped_bands[1])  # Band 3 for Green
+            b = src.read(grouped_bands[2])  # Band 2 for Blue
             # Stack and normalize the bands
             img = np.dstack((r, g, b))
             img = img / normalization*255.  # Normalize to [0, 1] (if required)
@@ -209,7 +209,7 @@ def evaluate(fold, model_name, target = "", use_checkpoint = False, model_not_na
     df_X_test = pd.DataFrame(X_test)
     df_y_test = pd.DataFrame(y_test, columns=['target'])
 
-    results_folder = f'modelling/dino/results/split_{mode}{imagery_source}_{fold}/'
+    results_folder = f'modelling/dino/results/split_{mode}{imagery_source}_{fold}_{grouped_bands}/'
     if not os.path.exists(results_folder):
         os.makedirs(results_folder)
     # Save to CSV files
@@ -256,7 +256,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_output_dim', type=int, default=768, help='The output dimension of the model')
     parser.add_argument('--use_checkpoint', action='store_true', help='Whether to use checkpoint file. If not, use raw model.')
     parser.add_argument('--model_not_named_target', action='store_false', help='Whether the model name contains the target variable')
-
+    parser.add_argument('--grouped_bands', nargs='+', type=int, help="List of grouped bands")
     
     args = parser.parse_args()
     maes = []
@@ -265,7 +265,7 @@ if __name__ == '__main__':
     elif args.mode == 'spatial':
         for i in range(5):
             fold = i + 1
-            mae = evaluate(str(fold), args.model_name, args.target, args.use_checkpoint,args.model_not_named_target,args.imagery_path, args.imagery_source, args.mode, args.model_output_dim)
+            mae = evaluate(str(fold), args.model_name, args.target, args.use_checkpoint,args.model_not_named_target,args.imagery_path, args.imagery_source, args.mode, args.model_output_dim, grouped_bands=args.grouped_bands)
             maes.append(mae)
         print(np.mean(maes), np.std(maes)/np.sqrt(5))
     elif args.mode == 'one_country':

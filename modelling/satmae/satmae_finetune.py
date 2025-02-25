@@ -8,11 +8,12 @@ import pandas as pd
 import rasterio
 import torch
 import torch.nn as nn
-from torch.nn import L1Loss, L2Loss
+from torch.nn import L1Loss, MSELoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-
+import warnings
+warnings.filterwarnings("ignore")
 from ..util_methods import *
 from . import build_satmae_finetune, build_satmae_temporal_finetune
 
@@ -65,6 +66,7 @@ def main(args):
         predict_target,
         temporal=args.temporal,
         landsat=args.landsat,
+        img_size=args.img_size,
     )
 
     # Set your desired seed
@@ -91,11 +93,12 @@ def main(args):
         global_pool=False,
         satmae_type="vit_large_patch16",
         pretrained_model=args.pretrained_ckpt,
+        img_size=args.img_size,
     )
     if args.temporal:
         base_model = build_satmae_temporal_finetune(model_args)
     else:
-        base_model = build_satmae_finetune(model_args)
+        base_model = build_satmae_finetune(model_args)  
 
     model = base_model.to(device)
 
@@ -104,7 +107,7 @@ def main(args):
     if args.loss == "l1":
         loss_fn = L1Loss()
     elif args.loss == "l2":
-        loss_fn = L2Loss()
+        loss_fn = MSELoss()
     else:
         raise ValueError("Loss function other than 'l1' or 'l2' not supported")
 
@@ -153,7 +156,7 @@ def main(args):
                 if args.enable_profiling:
                     tb_writer.add_scalar("timer/load", loading_time, iteration)
                     tb_writer.add_scalar("timer/step", step_time, iteration)
-            break
+            # break
 
             iteration += 1
 
@@ -213,7 +216,7 @@ def main(args):
 
         if stopping:
             break
-        break
+        # break
 
 
 if __name__ == "__main__":
@@ -233,4 +236,5 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=1e-6)
     parser.add_argument("--pretrained_ckpt", type=str, default="")
     parser.add_argument("--enable_profiling", action="store_true")
+    parser.add_argument("--img_size", type=int, default=224)
     main(parser.parse_args())

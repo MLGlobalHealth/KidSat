@@ -19,9 +19,12 @@ def save_checkpoint(model, optimizer, epoch, loss, filename="checkpoint.pth"):
         'loss': loss
     }, filename)
 
-def load_and_preprocess_image(path, landsat=True):
+def load_and_preprocess_image(path, landsat=True, read_all = False):
     with rasterio.open(path) as src:
-        img = src.read([4,3,2]).transpose(1,2,0)
+        if read_all:
+            img = src.read()[:13].transpose(1,2,0)
+        else:
+            img = src.read([4,3,2]).transpose(1,2,0)
         if landsat:
             img = img / 30000. *255.  # Normalize to [0, 1] (if required)
         else:
@@ -43,11 +46,12 @@ def set_seed(seed):
 
 
 class CustomDataset(Dataset):
-    def __init__(self, dataframe, transform, predict_target, landsat=True):
+    def __init__(self, dataframe, transform, predict_target, landsat=True, read_all=False):
         self.dataframe = dataframe
         self.transform = transform
         self.target = predict_target
         self.landsat = landsat
+        self.read_all = read_all
         self.cache = {}
         print("Using", "landsat" if landsat else "sentinel")
 
@@ -59,9 +63,9 @@ class CustomDataset(Dataset):
             return
         item = self.dataframe.iloc[idx]
 
-        image = load_and_preprocess_image(item["imagery_path"], landsat=self.landsat)
+        image = load_and_preprocess_image(item["imagery_path"], landsat=self.landsat, read_all=self.read_all)
         # Apply feature extractor if necessary, might need adjustments
-        image_tensor = self.transform(Image.fromarray(image))
+        image_tensor = self.transform(image)
         # Assuming your target is a single scalar
         target = torch.tensor(item[self.target], dtype=torch.float32)
         self.cache[idx] = (image_tensor, target)
@@ -79,7 +83,7 @@ class CustomTemporalDataset(CustomDataset):
 
         image = load_and_preprocess_image(item["imagery_path"], landsat=self.landsat)
         # Apply feature extractor if necessary, might need adjustments
-        image_tensor = self.transform(Image.fromarray(image))
+        image_tensor = self.transform(image)
         # Assuming your target is a single scalar
         target = torch.tensor(item[self.target], dtype=torch.float32)
         timestamp = torch.tensor([item["YEAR"] - 2002, 0, 0])
@@ -90,9 +94,9 @@ class CustomTemporalDataset(CustomDataset):
 
 
 
-def get_datasets(dhs_path, imagery_path, predict_target, temporal=False, split=True, seed=42, landsat=True, train=True):
+def get_datasets(dhs_path, imagery_path, predict_target, temporal=False, split=True, seed=42, landsat=True, train=True, multispectral = False, img_size = 224):
     print("Dataset path:", dhs_path)
-    df = pd.read_csv(dhs_path, index_col=0)
+    df = pd.read_csv(dhs_path, index_col=False)
     if temporal:
         df = df[df["YEAR"] <= 2019] if train else df[df["YEAR"] >= 2020]
     available_imagery = []
@@ -139,19 +143,19 @@ def get_datasets(dhs_path, imagery_path, predict_target, temporal=False, split=T
     predict_target = sorted(filtered_predict_target)
     assert len(predict_target) in [99, 1]
     # assert len(df) == 14068
-
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),  # Resize the image to the input size expected by the model
         transforms.ToTensor(),  # Convert the image to a PyTorch tensor
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize with ImageNet's mean and std
+        transforms.Resize((img_size, img_size)),  # Resize the image to the input size expected by the model
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize with ImageNet's mean and std
     ])
 
     dataset_class = CustomTemporalDataset if temporal else CustomDataset
     if split:
         train_df, val_df = train_test_split(df, test_size=0.2, random_state=seed)
     
-        train_dataset = dataset_class(train_df, transform, predict_target, landsat=landsat)
-        val_dataset = dataset_class(val_df, transform, predict_target, landsat=landsat)
+        train_dataset = dataset_class(train_df, transform, predict_target, landsat=landsat, read_all=multispectral)
+        val_dataset = dataset_class(val_df, transform, predict_target, landsat=landsat, read_all=multispectral)
         return train_dataset, val_dataset, len(predict_target)
     else:
-        return dataset_class(df, transform, predict_target, landsat=landsat), len(predict_target)
+        return dataset_class(df, transform, predict_target, landsat=landsat, read_all=multispectral), len(predict_target)
+

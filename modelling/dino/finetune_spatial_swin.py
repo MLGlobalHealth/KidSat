@@ -8,6 +8,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import torch
 import torchvision.transforms as transforms
+import torchvision.models as models
 from PIL import Image    
 import re
 import torch.nn as nn
@@ -19,8 +20,16 @@ import warnings
 warnings.filterwarnings("ignore")
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from src.swin_ms import SwinTransformer
-def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, img_size = None):
+
+class ClippedReLU(nn.Module):
+    def __init__(self, max_value=1.0):
+        super(ClippedReLU, self).__init__()
+        self.max_value = max_value
+
+    def forward(self, x):
+        return torch.clamp(x, min=0, max=self.max_value)
+    
+def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, img_size = None, raw = False):
     
     if imagery_source == 'L':
         normalization = 30000.
@@ -142,8 +151,23 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
-    base_model = SwinTransformer(in_chans=13, img_size = imagery_size)
+    num_input_channels = 13  # For example, 13 channels
 
+    # Load the Swin-Base model without pretrained weights
+    model = models.swin_b(weights=None)
+    if not raw:
+        model = models.swin_b(weights=models.Swin_B_Weights.IMAGENET1K_V1)
+    # Modify the first convolution layer to accept a different number of input channels
+    # The original layer has an in_channels of 3
+    model.features[0][0] = nn.Conv2d(
+        in_channels=num_input_channels,
+        out_channels=model.features[0][0].out_channels,
+        kernel_size=model.features[0][0].kernel_size,
+        stride=model.features[0][0].stride,
+        padding=model.features[0][0].padding,
+        bias=(model.features[0][0].bias is not None)
+    )
+    base_model = model
     def save_checkpoint(model, optimizer, epoch, loss, filename="checkpoint.pth"):
         torch.save({
             'epoch': epoch,
@@ -153,17 +177,19 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
         }, filename)
 
     torch.cuda.empty_cache()
+    
+    
     class ViTForRegression(nn.Module):
         def __init__(self, base_model):
             super().__init__()
             self.base_model = base_model
             # Assuming the original model outputs 768 features from the transformer
             self.regression_head = nn.Linear(emb_size, len(predict_target))  # Output one continuous variable
-
+            self.act = torch.sigmoid
         def forward(self, pixel_values):
             outputs = self.base_model(pixel_values)
             # We use the last hidden state
-            return torch.sigmoid(self.regression_head(outputs))
+            return self.act(self.regression_head(outputs))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device}")
@@ -187,7 +213,7 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     head_params = {'params': model.regression_head.parameters(), 'lr': 1e-5, 'weight_decay': 1e-6}
 
     # Setup the optimizer
-    optimizer = torch.optim.Adam([base_model_params, head_params])
+    optimizer = Adam([base_model_params, head_params])
     loss_fn = L1Loss()
 
     for epoch in range(epochs_ran+1, num_epochs):
@@ -242,9 +268,10 @@ if __name__ == '__main__':
     parser.add_argument('--target', type=str,default='', help='Target variable')
     parser.add_argument('--imagery_path', type=str, help='The parent directory of all imagery')
     parser.add_argument('--imagery_source', type=str, default='L', help='L for Landsat and S for Sentinel')
-    parser.add_argument('--emb_size', type=int, default=768, help='Size of the model output')
+    parser.add_argument('--emb_size', type=int, default=1000, help='Size of the model output')
     parser.add_argument('--batch_size', type=int, help='Batch size')
     parser.add_argument('--num_epochs', type=int, default=20, help='Number of epochs for training')
     parser.add_argument('--imagery_size', type=int, help='Size of the imagery')
+    parser.add_argument('--raw', action='store_true', help='Use raw model')
     args = parser.parse_args()
-    main(args.fold, args.model_name, args.target, args.imagery_path, args.imagery_source,args.emb_size, args.batch_size, args.num_epochs, args.imagery_size)
+    main(args.fold, args.model_name, args.target, args.imagery_path, args.imagery_source,args.emb_size, args.batch_size, args.num_epochs, args.imagery_size, args.raw)

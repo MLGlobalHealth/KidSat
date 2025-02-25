@@ -150,7 +150,7 @@ Remove the `--use_checkpoint` for evaluating on raw DINO models.
 To run the finetuning process, you first need to download the checkpoints for fMoW-SatMAE [non-temporal](https://zenodo.org/record/7369797/files/fmow_pretrain.pth) or [temporal](https://zenodo.org/record/7369797/files/pretrain_fmow_temporal.pth). Then run the following:
 
 ```sh
-python -m modelling.satmae.satmae_finetune --pretrained_ckpt $CHECKPOINT_PATH --dhs_path ./survey_processing/processed_data/train_fold_1.csv --output_dir $OUTPUT_DIR --imagery_path $IMAGERY_PATH
+python -m modelling.satmae.satmae_finetune --pretrained_ckpt $CHECKPOINT_PATH --dhs_path ./survey_processing/processed_data/train_fold_1.csv --output_path $OUTPUT_DIR --imagery_path $IMAGERY_PATH
 ```
 Arguments:
 - `--pretrained_ckpt`: Checkpoint of pretrained SatMAE model.
@@ -173,9 +173,9 @@ Arguments:
 ### Evaluation
 Evaluation consists of 2 steps: exporting the model output, and perform Ridge Regression. Since exporting the model output is expensive, we split it into 2 separate modules:
 
-To carry out the first step, edit the file `modelling/satmae/satmae_finetune` and change the `SATMAE_PATHS` variable accordingly. For each entry, you can put all the model checkpoints you need to evaluate or `None` to use the pretrained checkpoint, along with their fold (1-5). You do not have to put the entries in any order, nor need to put all the folds, but the script caches the data from different folds in memory, which helps significantly reduce the time for loading and preprocessing the satellite images.
+To carry out the first step, edit the file `modelling/satmae/satmae_eval` and change the `SATMAE_PATHS` variable accordingly. For each entry, you can put all the model checkpoints you need to evaluate or `None` to use the pretrained checkpoint, along with their fold (1-5). You do not have to put the entries in any order, nor need to put all the folds, but the script caches the data from different folds in memory, which helps significantly reduce the time for loading and preprocessing the satellite images.
 ```sh
-python -m modelling.satmae.satmae_finetune --output_dir $OUTPUT_DIR --imagery_path $IMAGERY_PATH
+python -m modelling.satmae.satmae_eval --output_path $OUTPUT_DIR --imagery_path $IMAGERY_PATH
 ```
 Arguments
 - `--imagery_path`: Path to imagery folder

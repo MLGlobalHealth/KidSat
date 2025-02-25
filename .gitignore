@@ -175,6 +175,10 @@ archive/
 *.pdf
 *.svg
 *.png
-*.json
+*json
 submit_*
 config*
+test*
+archived*
+afr_adm*
+*.npy

@@ -17,7 +17,7 @@ from torch.optim import Adam
 from torch.nn import L1Loss
 import warnings
 warnings.filterwarnings("ignore")
-def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, img_size = None):
+def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch_size, num_epochs, img_size = None, grouped_bands = None):
     
     if imagery_source == 'L':
         normalization = 30000.
@@ -28,6 +28,11 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     else:
         raise Exception("Unsupported imagery source")
     
+    best_model = f'modelling/dino/model/{model_name}_{fold}_{str(grouped_bands)}all_cluster_best_{imagery_source}{target}_.pth'
+    last_model = f'modelling/dino/model/{model_name}_{fold}_{str(grouped_bands)}all_cluster_last_{imagery_source}{target}_.pth'
+
+    if grouped_bands is None:
+        grouped_bands = [4, 3, 2]
     if not img_size is None:
         imagery_size = img_size
     data_folder = r'survey_processing/processed_data'
@@ -80,7 +85,7 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     train_df = train_df.dropna(subset=filtered_predict_target)
     predict_target = sorted(filtered_predict_target)
 
-    def load_and_preprocess_image(path, grouped_bands=[4,3,2]):
+    def load_and_preprocess_image(path, grouped_bands=grouped_bands):
         with rasterio.open(path) as src:
             b1 = src.read(grouped_bands[0])
             b2 = src.read(grouped_bands[1])
@@ -170,8 +175,6 @@ def main(fold, model_name, target, imagery_path, imagery_source, emb_size, batch
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device}")
     model = ViTForRegression(base_model).to(device)
-    best_model = f'modelling/dino/model/{model_name}_{fold}_all_cluster_best_{imagery_source}{target}_.pth'
-    last_model = f'modelling/dino/model/{model_name}_{fold}_all_cluster_last_{imagery_source}{target}_.pth'
     if os.path.exists(last_model):
         last_state_dict = torch.load(last_model)
         best_error = torch.load(best_model)['loss']
@@ -248,5 +251,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, help='Batch size')
     parser.add_argument('--num_epochs', type=int, default=20, help='Number of epochs for training')
     parser.add_argument('--imagery_size', type=int, help='Size of the imagery')
+    parser.add_argument('--grouped_bands', type=int, nargs=3, help='Three integer grouped bands (e.g., 4 3 2)')
     args = parser.parse_args()
-    main(args.fold, args.model_name, args.target, args.imagery_path, args.imagery_source,args.emb_size, args.batch_size, args.num_epochs, args.imagery_size)
+    main(args.fold, args.model_name, args.target, args.imagery_path, args.imagery_source,
+         args.emb_size, args.batch_size, args.num_epochs, args.imagery_size, args.grouped_bands)
